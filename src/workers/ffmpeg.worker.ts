@@ -1,5 +1,6 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { toBlobURL } from "@ffmpeg/util";
+import coreURL from "@ffmpeg/core/dist/esm/ffmpeg-core.js?url";
+import wasmURL from "@ffmpeg/core/dist/esm/ffmpeg-core.wasm?url";
 import type { WorkerMessage, WorkerResponse } from "../types";
 
 let ffmpeg: FFmpeg | null = null;
@@ -53,14 +54,20 @@ async function loadFFmpeg() {
     } as WorkerResponse);
   });
 
-  const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
+  try {
+    await ffmpeg.load({
+      coreURL: coreURL,
+      wasmURL: wasmURL,
+    });
 
-  await ffmpeg.load({
-    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-  });
-
-  postMessage({ type: "LOADED" } as WorkerResponse);
+    postMessage({ type: "LOADED" } as WorkerResponse);
+  } catch (e: unknown) {
+    console.error("FFmpeg load error:", e);
+    postMessage({
+      type: "ERROR",
+      payload: e instanceof Error ? e.message : "Failed to load FFmpeg",
+    } as WorkerResponse);
+  }
 }
 
 async function transcodeVideo(job: TranscodeJob) {
@@ -78,7 +85,8 @@ async function transcodeVideo(job: TranscodeJob) {
   const data = await ffmpeg.readFile(outputName);
 
   // Fix type assertion for Blob
-  const blobData = data as Uint8Array;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const blobData = data as any;
   const blob = new Blob([blobData], { type: "image/gif" });
 
   postMessage({

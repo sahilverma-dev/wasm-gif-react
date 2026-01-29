@@ -8,14 +8,14 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     host: true,
-    port: 3000,
+    port: 3001,
     headers: {
       "Cross-Origin-Embedder-Policy": "require-corp",
       "Cross-Origin-Opener-Policy": "same-origin",
     },
   },
   optimizeDeps: {
-    exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util"],
+    exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util", "@ffmpeg/core"],
   },
   resolve: {
     alias: {

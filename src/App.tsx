@@ -6,14 +6,23 @@ import { VideoList } from "./components/uploader/VideoList";
 import { VideoPlayer } from "./components/editor/VideoPlayer";
 import { ProcessingPanel } from "./components/processing/ProcessingPanel";
 import { useJobProcessor } from "./hooks/useJobProcessor";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { cn } from "./lib/utils";
 
 function App() {
   const isProcessing = useJobStore((state) => state.isProcessing);
   const { videos, activeVideoId } = useVideoStore();
   // Initialize background worker
-  useJobProcessor();
+  const { workerError } = useJobProcessor();
+
+  useEffect(() => {
+    if (workerError) {
+      toast.error("System Error", {
+        description: workerError,
+        duration: Infinity,
+      });
+    }
+  }, [workerError]);
 
   // Prevent accidental tab close
   useEffect(() => {
@@ -33,10 +42,10 @@ function App() {
       <Toaster position="top-center" />
 
       {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+      <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md supports-backdrop-filter:bg-background/60">
         <div className="container mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xl font-bold bg-gradient-to-r from-primary to-purple-500 bg-clip-text text-transparent">
+            <span className="text-xl font-bold bg-linear-to-r from-primary to-purple-500 bg-clip-text text-transparent">
               GifCraft
             </span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground font-medium">

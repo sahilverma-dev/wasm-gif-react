@@ -10,6 +10,8 @@ export function useJobProcessor() {
   const workerRef = useRef<Worker | null>(null);
   const [isWorkerLoaded, setIsWorkerLoaded] = useState(false);
 
+  const [workerError, setWorkerError] = useState<string | null>(null);
+
   // Refs to access latest state inside worker callback without re-binding listener
   const jobsRef = useRef(jobs);
   useEffect(() => {
@@ -43,12 +45,18 @@ export function useJobProcessor() {
   // Initialize Worker
   useEffect(() => {
     if (!workerRef.current) {
-      workerRef.current = new Worker(
+      const worker = new Worker(
         new URL("../workers/ffmpeg.worker.ts", import.meta.url),
         { type: "module" }
       );
+      workerRef.current = worker;
 
-      workerRef.current.onmessage = (event: MessageEvent<WorkerResponse>) => {
+      worker.onerror = (err) => {
+        console.error("Worker error:", err);
+        setWorkerError("Failed to load video processor. Please refresh.");
+      };
+
+      worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
         const { type, payload } = event.data;
 
         switch (type) {
@@ -63,17 +71,41 @@ export function useJobProcessor() {
             completeCurrentJob(URL.createObjectURL(blob));
             break;
           }
-          case "ERROR":
-            failCurrentJob(
-              typeof payload === "string" ? payload : "Unknown error"
+          case "ERROR": {
+            // If it's a job error, fail the job. If it's a general worker error, set global state.
+            const errorMsg =
+              typeof payload === "string" ? payload : "Unknown error";
+            const processingJob = jobsRef.current.find(
+              (j) => j.status === "processing"
             );
+
+            if (processingJob) {
+              failCurrentJob(errorMsg);
+            } else {
+              console.error("Worker Global Error:", errorMsg);
+              // Only set global error if we really can't recover or it's a load error
+              if (
+                errorMsg.includes("SharedArrayBuffer") ||
+                errorMsg.includes("FFmpeg")
+              ) {
+                setWorkerError(errorMsg);
+              }
+            }
             break;
+          }
         }
       };
 
-      workerRef.current.postMessage({ type: "LOAD" } as WorkerMessage);
+      worker.postMessage({ type: "LOAD" } as WorkerMessage);
     }
   }, [updateCurrentJobProgress, completeCurrentJob, failCurrentJob]);
+
+  useEffect(() => {
+    if (workerError) {
+      // You might want to import toast from sonner here or handle it in UI
+      console.error("Critical Worker Error:", workerError);
+    }
+  }, [workerError]);
 
   // Job Queue Processor
   useEffect(() => {
@@ -160,4 +192,6 @@ export function useJobProcessor() {
       setProcessing(false);
     }
   }, [jobs, isWorkerLoaded, videos, updateJobProgress, failJob, setProcessing]);
+
+  return { workerError, isWorkerLoaded };
 }
