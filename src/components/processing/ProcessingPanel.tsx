@@ -63,6 +63,10 @@ export function ProcessingPanel() {
     const trimEnd = video.trim.end;
     const totalDuration = trimEnd - trimStart;
 
+    // Ensure clip duration is valid
+    const validClipDuration = Math.min(clipDuration, totalDuration);
+    if (validClipDuration !== clipDuration) setClipDuration(validClipDuration);
+
     // Safety check
     if (clipDuration > totalDuration) {
       toast.error("Clip duration longer than selected video range");
@@ -137,41 +141,84 @@ export function ProcessingPanel() {
         {/* Clip Controls */}
         {mode === "clips" && (
           <div className="rounded-xl border bg-muted/40 p-4 space-y-5">
-            <div className="space-y-2">
-              <label className="flex justify-between text-sm font-medium">
-                <span>Clips</span>
-                <span className="text-primary">{clipCount}</span>
-              </label>
-              <input
-                type="range"
-                min="2"
-                max="10"
-                step="1"
-                value={clipCount}
-                onChange={(e) => setClipCount(Number(e.target.value))}
-                className="w-full accent-primary h-2"
-              />
-            </div>
+            {/* Logic: Total Duration available */}
+            {(() => {
+              const trimStart = video.trim.start;
+              const trimEnd = video.trim.end;
+              const totalDuration = trimEnd - trimStart;
 
-            <div className="space-y-2">
-              <label className="flex justify-between text-sm font-medium">
-                <span>Duration</span>
-                <span className="text-primary">{formatTime(clipDuration)}</span>
-              </label>
-              <input
-                type="range"
-                min="0.5"
-                max="5"
-                step="0.5"
-                value={clipDuration}
-                onChange={(e) => setClipDuration(Number(e.target.value))}
-                className="w-full accent-primary h-2"
-              />
-            </div>
+              // Calculate step for info
+              const step =
+                clipCount > 1
+                  ? (totalDuration - clipDuration) / (clipCount - 1)
+                  : 0;
 
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              {clipCount} clips × {clipDuration}s each
-            </p>
+              return (
+                <>
+                  <div className="space-y-3">
+                    <label className="flex justify-between text-sm font-medium">
+                      <span>Clips</span>
+                      <span className="text-primary">{clipCount}</span>
+                    </label>
+                    <Slider
+                      min={2}
+                      max={20}
+                      step={1}
+                      value={[clipCount]}
+                      onValueChange={(val) => setClipCount(val[0])}
+                      className="py-1"
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="flex justify-between text-sm font-medium">
+                      <span>Duration per Clip</span>
+                      <span className="text-primary">
+                        {formatTime(clipDuration)}
+                      </span>
+                    </label>
+                    <Slider
+                      min={0.5}
+                      max={Math.min(totalDuration, 10)} // Cap at 10s or total video length
+                      step={0.5}
+                      value={[clipDuration]}
+                      onValueChange={(val) => {
+                        const newDuration = Math.min(val[0], totalDuration);
+                        setClipDuration(newDuration);
+                      }}
+                      className="py-1"
+                    />
+                    <div className="flex justify-between text-[10px] text-muted-foreground px-1">
+                      <span>0.5s</span>
+                      <span>
+                        Max: {formatTime(Math.min(totalDuration, 10))}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg bg-background p-3 text-xs text-muted-foreground space-y-1 border">
+                    <p>
+                      Generating{" "}
+                      <span className="font-semibold text-foreground">
+                        {clipCount} clips
+                      </span>{" "}
+                      of{" "}
+                      <span className="font-semibold text-foreground">
+                        {clipDuration}s
+                      </span>{" "}
+                      each.
+                    </p>
+                    <p>
+                      Spaced every{" "}
+                      <span className="font-semibold text-foreground">
+                        {step.toFixed(1)}s
+                      </span>{" "}
+                      across {formatTime(totalDuration)}.
+                    </p>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
 
