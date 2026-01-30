@@ -1,18 +1,60 @@
+import { useJobStore } from "../../store/useJobStore";
 import { useVideoStore } from "../../store/useVideoStore";
-import { X, Play, Clock, Scissors, PlusIcon } from "lucide-react";
+import { X, Play, Clock, Scissors, PlusIcon, Zap } from "lucide-react";
 import { formatTime, getMetadata } from "../../lib/video-utils";
-import { cn } from "../../lib/utils"; // Assuming generic utility exists, else I'll make one or inline
+import { cn } from "../../lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { useDropzone } from "react-dropzone";
 import { useCallback } from "react";
-import type { VideoFile } from "@/types";
+import type { VideoFile, ProcessingJob } from "@/types";
 import { toast } from "sonner";
+import { Button } from "../ui/button";
 
 import { v4 as uuidv4 } from "uuid";
 
 export function VideoList() {
   const { videos, activeVideoId, setActiveVideo, addVideos, removeVideo } =
     useVideoStore();
+  const { jobs, addJob } = useJobStore();
+
+  const handleProcessAll = () => {
+    let addedCount = 0;
+
+    videos.forEach((video) => {
+      // Check if video is already in queue (pending or processing)
+      const exists = jobs.some(
+        (j) =>
+          j.videoId === video.id &&
+          (j.status === "pending" || j.status === "processing"),
+      );
+
+      if (exists) return;
+
+      const job: ProcessingJob = {
+        id: uuidv4(),
+        videoId: video.id,
+        status: "pending",
+        progress: 0,
+        settings: {
+          width: 480,
+          fps: 15,
+          quality: "medium",
+        },
+        outputFileName: `${video.file.name.split(".")[0]}_${Date.now()}.gif`,
+      };
+
+      addJob(job);
+      addedCount++;
+    });
+
+    if (addedCount > 0) {
+      toast.success(
+        `Added ${addedCount} video${addedCount > 1 ? "s" : ""} to queue`,
+      );
+    } else {
+      toast.info("All videos are already in the queue");
+    }
+  };
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
@@ -37,7 +79,6 @@ export function VideoList() {
 
           newVideos.push({
             id: uuidv4(),
-
             file,
             blobUrl: URL.createObjectURL(file), // Still useful for player
             ...metadata,
@@ -77,6 +118,10 @@ export function VideoList() {
     <div className="w-full space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Queue ({videos.length})</h2>
+        <Button onClick={handleProcessAll} size="sm" className="h-8 gap-2">
+          <Zap className="w-4 h-4" />
+          Process All
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
