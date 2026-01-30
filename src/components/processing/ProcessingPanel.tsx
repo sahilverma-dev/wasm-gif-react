@@ -93,40 +93,29 @@ export function ProcessingPanel() {
   if (!video) return null;
 
   return (
-    <div className="bg-card border-x-0 md:border md:rounded-2xl p-4 md:p-6 shadow-sm md:shadow-md space-y-5 h-fit max-w-md mx-auto">
-      {/* Header - Compact for Mobile */}
-      <div className="flex items-center justify-between pb-3 border-b">
-        <div className="flex items-center gap-2">
-          <Settings className="w-5 h-5 text-primary" />
-          <h3 className="font-bold text-lg tracking-tight">Export Settings</h3>
-        </div>
-        {/* Mobile-friendly badge for estimated size */}
-        <span className="text-[10px] font-bold uppercase tracking-wider bg-secondary px-2 py-1 rounded-full text-secondary-foreground">
-          ~{(video.duration * settings.fps * 0.05).toFixed(1)} MB
-        </span>
-      </div>
-
-      {/* Mode Switcher - Full Width for Thumbs */}
-      <div className="p-1 bg-muted rounded-xl flex gap-1">
+    <div className="bg-card border rounded-2xl shadow-sm p-4 space-y-6 h-fit">
+      {/* Mode Switcher */}
+      <div className="grid grid-cols-2 rounded-xl bg-muted p-1 gap-1">
         <button
           onClick={() => setMode("simple")}
           className={cn(
-            "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold rounded-lg transition-all",
+            "flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all",
             mode === "simple"
-              ? "bg-background shadow-sm text-primary"
-              : "text-muted-foreground active:bg-background/40",
+              ? "bg-background shadow text-primary"
+              : "text-muted-foreground hover:text-foreground",
           )}
         >
           <Film className="w-4 h-4" />
           Single
         </button>
+
         <button
           onClick={() => setMode("clips")}
           className={cn(
-            "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold rounded-lg transition-all",
+            "flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all",
             mode === "clips"
-              ? "bg-background shadow-sm text-primary"
-              : "text-muted-foreground active:bg-background/40",
+              ? "bg-background shadow text-primary"
+              : "text-muted-foreground hover:text-foreground",
           )}
         >
           <Grid className="w-4 h-4" />
@@ -134,111 +123,117 @@ export function ProcessingPanel() {
         </button>
       </div>
 
-      <div className="space-y-5">
-        {/* Batch Configuration - Stacked neatly for mobile */}
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <Settings className="w-5 h-5 text-primary shrink-0" />
+        <h3 className="font-semibold text-base">Output Settings</h3>
+      </div>
+
+      {/* Settings */}
+      <div className="space-y-6">
+        {/* Clip Controls */}
         {mode === "clips" && (
-          <div className="space-y-5 p-4 bg-primary/5 rounded-xl border border-primary/10">
-            <div className="space-y-4">
-              <div className="flex justify-between items-end">
-                <Label className="text-xs font-bold uppercase text-muted-foreground">
-                  Clip Count
-                </Label>
-                <span className="text-sm font-bold text-primary">
-                  {clipCount} clips
-                </span>
-              </div>
-              <Slider
-                min={2}
-                max={10}
-                step={1}
-                value={[clipCount]}
-                onValueChange={([val]) => setClipCount(val)}
-                className="py-2" // Larger touch target
+          <div className="rounded-xl border bg-muted/40 p-4 space-y-5">
+            <div className="space-y-2">
+              <label className="flex justify-between text-sm font-medium">
+                <span>Clips</span>
+                <span className="text-primary">{clipCount}</span>
+              </label>
+              <input
+                type="range"
+                min="2"
+                max="10"
+                step="1"
+                value={clipCount}
+                onChange={(e) => setClipCount(Number(e.target.value))}
+                className="w-full accent-primary h-2"
               />
             </div>
 
-            <div className="space-y-4">
-              <div className="flex justify-between items-end">
-                <Label className="text-xs font-bold uppercase text-muted-foreground">
-                  Length
-                </Label>
-                <span className="text-sm font-bold text-primary">
-                  {formatTime(clipDuration)}
-                </span>
-              </div>
-              <Slider
-                min={0.5}
-                max={5}
-                step={0.5}
-                value={[clipDuration]}
-                onValueChange={([val]) => setClipDuration(val)}
-                className="py-2"
+            <div className="space-y-2">
+              <label className="flex justify-between text-sm font-medium">
+                <span>Duration</span>
+                <span className="text-primary">{formatTime(clipDuration)}</span>
+              </label>
+              <input
+                type="range"
+                min="0.5"
+                max="5"
+                step="0.5"
+                value={clipDuration}
+                onChange={(e) => setClipDuration(Number(e.target.value))}
+                className="w-full accent-primary h-2"
               />
             </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {clipCount} clips × {clipDuration}s each
+            </p>
           </div>
         )}
 
-        {/* Technical Specs Group */}
-        <div className="grid grid-cols-1 gap-5">
-          <div className="flex items-center justify-between bg-muted/30 p-3 rounded-lg">
-            <Label htmlFor="resolution" className="font-semibold text-sm">
-              Resolution
-            </Label>
-            <Select
-              defaultValue={"720"}
-              onValueChange={(val) =>
-                setSettings({ ...settings, width: Number(val) })
-              }
-            >
-              <SelectTrigger
-                id="resolution"
-                className="w-[110px] h-9 bg-background"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {RESOLUTIONS.map((w) => (
-                  <SelectItem key={w} value={w.toString()}>
-                    {w}px
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        {/* Resolution */}
+        <div className="space-y-2">
+          <Label htmlFor="resolution" className="text-sm">
+            Resolution
+          </Label>
+          <Select
+            defaultValue="720"
+            onValueChange={(e) =>
+              setSettings({ ...settings, width: Number(e) })
+            }
+          >
+            <SelectTrigger id="resolution" className="w-full h-11">
+              <SelectValue placeholder="Select resolution" />
+            </SelectTrigger>
+            <SelectContent>
+              {RESOLUTIONS.map((w) => (
+                <SelectItem key={w} value={w.toString()}>
+                  {w}px
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-          <div className="space-y-4 px-1">
-            <div className="flex justify-between items-end">
-              <Label className="font-semibold text-sm">Frame Rate (FPS)</Label>
-              <span className="text-sm font-bold text-primary">
-                {settings.fps}
-              </span>
-            </div>
-            <Slider
-              min={15}
-              max={60} // Capping at 60 for mobile performance
-              step={1}
-              value={[settings.fps]}
-              onValueChange={([val]) => setSettings({ ...settings, fps: val })}
-              className="py-2"
-            />
-          </div>
+        {/* FPS */}
+        <div className="space-y-2">
+          <Label className="flex justify-between text-sm">
+            <span>Frame Rate</span>
+            <span className="text-primary">{settings.fps} FPS</span>
+          </Label>
+          <Slider
+            step={1}
+            min={15}
+            max={120}
+            value={[settings.fps]}
+            onValueChange={(value) =>
+              setSettings({
+                ...settings,
+                fps: Number(value[0]),
+              })
+            }
+            className="py-2"
+          />
         </div>
       </div>
 
-      {/* Sticky-ready Action Button */}
-      <div className="pt-2">
+      {/* CTA */}
+      <div className="pt-4 space-y-2">
         <Button
           size="lg"
-          className="w-full h-14 text-base font-bold rounded-xl shadow-lg active:scale-[0.98] transition-transform"
+          className="w-full h-12 text-base"
           onClick={mode === "simple" ? handleGenerate : generateBatch}
         >
           {mode === "simple" ? "Create GIF" : `Create ${clipCount} GIFs`}
         </Button>
-        <p className="text-[10px] text-center text-muted-foreground mt-3 uppercase tracking-widest font-medium">
-          Processing happens in browser
+
+        <p className="text-xs text-center text-muted-foreground">
+          Est. size ~{(video.duration * settings.fps * 0.05).toFixed(1)} MB
         </p>
       </div>
 
+      {/* Jobs */}
       <JobList />
     </div>
   );
