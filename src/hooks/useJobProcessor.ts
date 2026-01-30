@@ -1,11 +1,21 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useJobStore } from "../store/useJobStore";
 import { useVideoStore } from "../store/useVideoStore";
+import { useLogStore } from "../store/useLogStore";
 import { type WorkerMessage, type WorkerResponse } from "../types";
+
+const formatSize = (bytes: number): string => {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+};
 
 export function useJobProcessor() {
   const { jobs, updateJobProgress, completeJob, failJob, setProcessing } =
     useJobStore();
+  const { addLog } = useLogStore();
   const { videos } = useVideoStore();
   const workerRef = useRef<Worker | null>(null);
   const [isWorkerLoaded, setIsWorkerLoaded] = useState(false);
@@ -23,23 +33,26 @@ export function useJobProcessor() {
       const job = jobsRef.current.find((j) => j.status === "processing");
       if (job) updateJobProgress(job.id, progress);
     },
-    [updateJobProgress]
+    [updateJobProgress],
   );
 
   const completeCurrentJob = useCallback(
-    (url: string) => {
+    (url: string, size: string) => {
       const job = jobsRef.current.find((j) => j.status === "processing");
-      if (job) completeJob(job.id, url);
+      if (job) completeJob(job.id, url, size);
     },
-    [completeJob]
+    [completeJob],
   );
+
+  // Wait, I can't simple change the signature here without changing the store.
+  // I will pause this tool call and update the store first.
 
   const failCurrentJob = useCallback(
     (error: string) => {
       const job = jobsRef.current.find((j) => j.status === "processing");
       if (job) failJob(job.id, error);
     },
-    [failJob]
+    [failJob],
   );
 
   // Initialize Worker
@@ -47,13 +60,14 @@ export function useJobProcessor() {
     if (!workerRef.current) {
       const worker = new Worker(
         new URL("../workers/ffmpeg.worker.ts", import.meta.url),
-        { type: "module" }
+        { type: "module" },
       );
       workerRef.current = worker;
 
       worker.onerror = (err) => {
         console.error("Worker error:", err);
         setWorkerError("Failed to load video processor. Please refresh.");
+        addLog(`Worker error: ${err.message}`, "error");
       };
 
       worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
@@ -62,13 +76,21 @@ export function useJobProcessor() {
         switch (type) {
           case "LOADED":
             setIsWorkerLoaded(true);
+            addLog("FFmpeg Loaded", "info");
+            break;
+          case "LOG":
+            addLog(payload as string, "ffmpeg");
             break;
           case "PROGRESS":
             updateCurrentJobProgress(payload as number);
             break;
           case "DONE": {
             const { blob } = payload as { blob: Blob };
-            completeCurrentJob(URL.createObjectURL(blob));
+            completeCurrentJob(
+              URL.createObjectURL(blob),
+              formatSize(blob.size),
+            );
+            addLog("Job Completed", "info");
             break;
           }
           case "ERROR": {
@@ -76,8 +98,10 @@ export function useJobProcessor() {
             const errorMsg =
               typeof payload === "string" ? payload : "Unknown error";
             const processingJob = jobsRef.current.find(
-              (j) => j.status === "processing"
+              (j) => j.status === "processing",
             );
+
+            addLog(`Error: ${errorMsg}`, "error");
 
             if (processingJob) {
               failCurrentJob(errorMsg);
@@ -98,7 +122,7 @@ export function useJobProcessor() {
 
       worker.postMessage({ type: "LOAD" } as WorkerMessage);
     }
-  }, [updateCurrentJobProgress, completeCurrentJob, failCurrentJob]);
+  }, [updateCurrentJobProgress, completeCurrentJob, failCurrentJob, addLog]);
 
   useEffect(() => {
     if (workerError) {

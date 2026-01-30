@@ -7,7 +7,7 @@ interface JobState {
 
   addJob: (job: ProcessingJob) => void;
   updateJobProgress: (id: string, progress: number) => void;
-  completeJob: (id: string, resultUrl: string) => void;
+  completeJob: (id: string, resultUrl: string, size?: string) => void;
   failJob: (id: string, error: string) => void;
   cancelJob: (id: string) => void;
   clearCompleted: () => void;
@@ -23,37 +23,37 @@ export const useJobStore = create<JobState>((set) => ({
   updateJobProgress: (id, progress) =>
     set((state) => ({
       jobs: state.jobs.map((j) =>
-        j.id === id ? { ...j, status: "processing", progress } : j
+        j.id === id ? { ...j, status: "processing", progress } : j,
       ),
     })),
 
-  completeJob: (id, resultUrl) =>
+  completeJob: (id, resultUrl, size) =>
     set((state) => ({
       jobs: state.jobs.map((j) =>
         j.id === id
-          ? { ...j, status: "completed", progress: 100, resultUrl }
-          : j
+          ? { ...j, status: "completed", progress: 100, resultUrl, size }
+          : j,
       ),
     })),
 
   failJob: (id, error) =>
     set((state) => ({
       jobs: state.jobs.map((j) =>
-        j.id === id ? { ...j, status: "error", error } : j
+        j.id === id ? { ...j, status: "error", error } : j,
       ),
     })),
 
   cancelJob: (id) =>
     set((state) => ({
       jobs: state.jobs.map((j) =>
-        j.id === id ? { ...j, status: "cancelled" } : j
+        j.id === id ? { ...j, status: "cancelled" } : j,
       ),
     })),
 
   clearCompleted: () =>
     set((state) => ({
       jobs: state.jobs.filter(
-        (j) => j.status !== "completed" && j.status !== "cancelled"
+        (j) => j.status !== "completed" && j.status !== "cancelled",
       ),
     })),
 

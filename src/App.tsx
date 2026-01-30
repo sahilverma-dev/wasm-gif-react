@@ -5,15 +5,23 @@ import { VideoUploader } from "./components/uploader/VideoUploader";
 import { VideoList } from "./components/uploader/VideoList";
 import { VideoPlayer } from "./components/editor/VideoPlayer";
 import { ProcessingPanel } from "./components/processing/ProcessingPanel";
+import { LogPanel } from "./components/processing/LogPanel";
 import { useJobProcessor } from "./hooks/useJobProcessor";
 import { Toaster, toast } from "sonner";
 import { cn } from "./lib/utils";
 
+import { SettingsModal } from "./components/settings/SettingsModal";
+import { Loader2 } from "lucide-react";
+
+// ... imports
+
 function App() {
   const isProcessing = useJobStore((state) => state.isProcessing);
   const { videos, activeVideoId } = useVideoStore();
+  const { workerError, isWorkerLoaded } = useJobProcessor();
+
   // Initialize background worker
-  const { workerError } = useJobProcessor();
+  // but we already called useJobProcessor above, destructuring workerError and isWorkerLoaded
 
   useEffect(() => {
     if (workerError) {
@@ -37,14 +45,35 @@ function App() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isProcessing]);
 
+  if (!isWorkerLoaded && !workerError) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <p className="text-muted-foreground animate-pulse">
+          Loading FFmpeg Core...
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary/20 flex flex-col">
+    <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary/20 flex flex-col transition-colors duration-300">
       <Toaster position="top-center" richColors />
+
+      {/* Navbar / Header */}
+      <header className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="font-bold text-lg tracking-tight flex items-center gap-2">
+          <div className="w-3 h-3 rounded-full bg-primary" />
+          GIF.WASM
+        </div>
+        <SettingsModal />
+      </header>
+
       {/* Main Content */}
-      <main className="container mx-auto md:px-4 p-2 md:py-8 flex-1 flex flex-col gap-8 max-w-6xl">
+      <main className="container mx-auto md:px-4 p-2 md:py-4 flex-1 flex flex-col gap-8 max-w-6xl">
         {/* Intro / Empty State */}
         {videos.length === 0 ? (
-          <div className="flex flex-col flex-1 items-center justify-center min-h-[60vh] gap-8 animate-in fade-in zoom-in-95 duration-500">
+          <div className="flex flex-col flex-1 items-center justify-center min-h-[50vh] gap-8 animate-in fade-in zoom-in-95 duration-500">
             <section className="flex flex-col gap-2 text-center">
               <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight">
                 Video to <span className="text-primary">GIF</span>
@@ -70,7 +99,10 @@ function App() {
                 )}
               >
                 {activeVideoId ? (
-                  <VideoPlayer />
+                  <div className="space-y-6">
+                    <VideoPlayer />
+                    <LogPanel />
+                  </div>
                 ) : (
                   <div className="h-64 border-2 border-dashed rounded-xl flex items-center justify-center text-muted-foreground bg-muted/20">
                     Select a video from the queue below to start editing

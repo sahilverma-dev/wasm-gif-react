@@ -42,9 +42,8 @@ async function loadFFmpeg() {
 
   ffmpeg = new FFmpeg();
 
-  ffmpeg.on("log", () => {
-    // console.log(message);
-    // postMessage({ type: 'LOG', payload: message } as WorkerResponse);
+  ffmpeg.on("log", ({ message }) => {
+    postMessage({ type: "LOG", payload: message } as WorkerResponse);
   });
 
   ffmpeg.on("progress", ({ progress }) => {

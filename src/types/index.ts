@@ -42,6 +42,19 @@ export interface ProcessingJob {
     start: number;
     end: number;
   };
+  // Metadata for UI
+  resolution?: string;
+  fps?: number;
+  duration?: number;
+  size?: string; // Formatted size e.g. "1.2 MB"
+  isCorrupted?: boolean;
+}
+
+export interface LogEntry {
+  id: string;
+  timestamp: number;
+  message: string;
+  type: "info" | "error" | "ffmpeg";
 }
 
 export interface WorkerMessage {
