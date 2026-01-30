@@ -51,7 +51,7 @@ export function TrimSlider({
         step={0.1}
         minStepsBetweenThumbs={1}
         onValueChange={handleChange}
-        className="py-4 cursor-pointer"
+        className="py-2 md:py-4 cursor-pointer"
       />
 
       {/* Visual Timeline Bar (placeholder for future waveforms) */}

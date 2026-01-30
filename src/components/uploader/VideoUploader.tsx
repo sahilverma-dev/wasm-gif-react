@@ -47,7 +47,7 @@ export function VideoUploader() {
       if (newVideos.length > 0) {
         addVideos(newVideos);
         toast.success(
-          `Added ${newVideos.length} video${newVideos.length > 1 ? "s" : ""}`
+          `Added ${newVideos.length} video${newVideos.length > 1 ? "s" : ""}`,
         );
       }
 
@@ -55,7 +55,7 @@ export function VideoUploader() {
         errors.forEach((err) => toast.error(err));
       }
     },
-    [addVideos]
+    [addVideos],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

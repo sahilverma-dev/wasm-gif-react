@@ -1,6 +1,4 @@
-export async function getMetadata(
-  file: File
-): Promise<{
+export async function getMetadata(file: File): Promise<{
   duration: number;
   width: number;
   height: number;
@@ -42,7 +40,7 @@ export async function getMetadata(
             URL.revokeObjectURL(video.src);
           },
           "image/jpeg",
-          0.7
+          0.7,
         );
       } else {
         reject(new Error("Canvas context failed"));
@@ -58,6 +56,6 @@ export async function getMetadata(
 export function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
-  const ms = Math.floor((seconds % 1) * 10);
-  return `${m}:${s.toString().padStart(2, "0")}.${ms}`;
+  const ms = Math.floor((seconds % 1) * 1000);
+  return `${m}:${s.toString().padStart(2, "0")}.${ms.toString().padStart(3, "0")}`;
 }

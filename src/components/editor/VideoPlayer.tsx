@@ -21,7 +21,7 @@ export function VideoPlayer() {
         videoRef.current.currentTime = video.trim.start;
       }
       setCurrentTime((prev) =>
-        prev !== video.trim.start ? video.trim.start : prev
+        prev !== video.trim.start ? video.trim.start : prev,
       );
       setIsPlaying(false);
     }
@@ -79,7 +79,7 @@ export function VideoPlayer() {
   }
 
   return (
-    <div className="w-full space-y-6 animate-in fade-in duration-500">
+    <div className="w-full animate-in fade-in duration-500">
       <div className="relative rounded-xl overflow-hidden bg-black shadow-2xl aspect-video group">
         <video
           ref={videoRef}
@@ -92,7 +92,7 @@ export function VideoPlayer() {
         />
 
         {/* Custom Controls Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-4">
+        <div className="absolute bottom-0 left-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-4">
           <button
             onClick={togglePlay}
             className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center hover:bg-white/40 transition-colors text-white"
@@ -114,13 +114,13 @@ export function VideoPlayer() {
         </div>
       </div>
 
-      <div className="bg-card border rounded-xl p-6 shadow-sm space-y-4">
+      <div className="bg-card border border-t-0 rounded-xl p-2 md:p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-lg flex items-center gap-2">
+          <h3 className="font-semibold text-sm md:text-lg flex items-center gap-2">
             <Scissors className="w-4 h-4 text-primary" />
             Trim Video
           </h3>
-          <span className="text-sm text-muted-foreground">
+          <span className="text-xs md:text-sm text-muted-foreground">
             Cut the segment you want to convert
           </span>
         </div>

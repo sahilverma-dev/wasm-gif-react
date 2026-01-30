@@ -1,12 +1,75 @@
 import { useVideoStore } from "../../store/useVideoStore";
-import { X, Play, Clock, Scissors } from "lucide-react";
-import { formatTime } from "../../lib/video-utils";
+import { X, Play, Clock, Scissors, PlusIcon } from "lucide-react";
+import { formatTime, getMetadata } from "../../lib/video-utils";
 import { cn } from "../../lib/utils"; // Assuming generic utility exists, else I'll make one or inline
 import { motion, AnimatePresence } from "motion/react";
+import { useDropzone } from "react-dropzone";
+import { useCallback } from "react";
+import type { VideoFile } from "@/types";
+import { toast } from "sonner";
+
+import { v4 as uuidv4 } from "uuid";
 
 export function VideoList() {
-  const { videos, activeVideoId, setActiveVideo, removeVideo } =
+  const { videos, activeVideoId, setActiveVideo, addVideos, removeVideo } =
     useVideoStore();
+
+  const onDrop = useCallback(
+    async (acceptedFiles: File[]) => {
+      const newVideos: VideoFile[] = [];
+      const errors: string[] = [];
+
+      // Process files sequentially to keep UI responsive-ish (could be concurrent but simple for now)
+      for (const file of acceptedFiles) {
+        if (file.size > 100 * 1024 * 1024) {
+          // 100MB limit
+          errors.push(`${file.name}: File too large (Max 100MB)`);
+          continue;
+        }
+
+        try {
+          const metadata = await getMetadata(file);
+
+          if (metadata.duration > 60) {
+            errors.push(`${file.name}: Video too long (Max 60s)`);
+            continue;
+          }
+
+          newVideos.push({
+            id: uuidv4(),
+
+            file,
+            blobUrl: URL.createObjectURL(file), // Still useful for player
+            ...metadata,
+            trim: { start: 0, end: metadata.duration },
+            clips: [],
+          });
+        } catch {
+          errors.push(`${file.name}: Failed to load video`);
+        }
+      }
+
+      if (newVideos.length > 0) {
+        addVideos(newVideos);
+        toast.success(
+          `Added ${newVideos.length} video${newVideos.length > 1 ? "s" : ""}`,
+        );
+      }
+
+      if (errors.length > 0) {
+        errors.forEach((err) => toast.error(err));
+      }
+    },
+    [addVideos],
+  );
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      "video/*": [".mp4", ".mov", ".webm"],
+    },
+    maxFiles: 10,
+  });
 
   if (videos.length === 0) return null;
 
@@ -29,7 +92,7 @@ export function VideoList() {
                 "relative group rounded-xl overflow-hidden cursor-pointer border-2 transition-all aspect-video bg-muted",
                 activeVideoId === video.id
                   ? "border-primary ring-2 ring-primary/20 shadow-lg"
-                  : "border-transparent hover:border-primary/50"
+                  : "border-transparent hover:border-primary/50",
               )}
               onClick={() => setActiveVideo(video.id)}
             >
@@ -37,7 +100,7 @@ export function VideoList() {
               <img
                 src={video.thumbnailUrl}
                 alt="Video thumbnail"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
               />
 
               {/* Overlay Info */}
@@ -71,8 +134,21 @@ export function VideoList() {
               </button>
             </motion.div>
           ))}
+          <div
+            {...getRootProps()}
+            // key={uuidv4()}
+            className={cn(
+              "relative group rounded-xl overflow-hidden cursor-pointer border-2 transition-all aspect-video flex items-center justify-center gap-2 bg-muted border-black/50 hover:border-black/10",
+              isDragActive
+                ? "border-primary bg-primary/5 scale-[1.01]"
+                : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30",
+            )}
+          >
+            <PlusIcon /> Add Videos
+          </div>
         </AnimatePresence>
       </div>
+      <input {...getInputProps()} />
     </div>
   );
 }
