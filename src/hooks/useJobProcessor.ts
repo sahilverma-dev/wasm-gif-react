@@ -13,8 +13,14 @@ const formatSize = (bytes: number): string => {
 };
 
 export function useJobProcessor() {
-  const { jobs, updateJobProgress, completeJob, failJob, setProcessing } =
-    useJobStore();
+  const {
+    jobs,
+    updateJobProgress,
+    completeJob,
+    failJob,
+    setProcessing,
+    retryJob,
+  } = useJobStore();
   const { addLog } = useLogStore();
   const { videos } = useVideoStore();
   const workerRef = useRef<Worker | null>(null);
@@ -104,7 +110,25 @@ export function useJobProcessor() {
             addLog(`Error: ${errorMsg}`, "error");
 
             if (processingJob) {
-              failCurrentJob(errorMsg);
+              // Auto-Retry Logic
+              const attempt = processingJob.attempt || 1;
+              if (attempt < 2) {
+                addLog(
+                  `Job failed (Attempt ${attempt}). Retrying with safe settings...`,
+                  "info",
+                );
+                retryJob(
+                  processingJob.id,
+                  {
+                    width: 480,
+                    fps: 15,
+                    quality: "medium",
+                  },
+                  errorMsg,
+                );
+              } else {
+                failCurrentJob(errorMsg);
+              }
             } else {
               console.error("Worker Global Error:", errorMsg);
               // Only set global error if we really can't recover or it's a load error
@@ -122,7 +146,13 @@ export function useJobProcessor() {
 
       worker.postMessage({ type: "LOAD" } as WorkerMessage);
     }
-  }, [updateCurrentJobProgress, completeCurrentJob, failCurrentJob, addLog]);
+  }, [
+    updateCurrentJobProgress,
+    completeCurrentJob,
+    failCurrentJob,
+    addLog,
+    retryJob,
+  ]);
 
   useEffect(() => {
     if (workerError) {

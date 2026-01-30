@@ -73,6 +73,19 @@ export function JobCard({ job, onCancel, onDownload }: JobCardProps) {
             </div>
           </div>
 
+          {/* Recovery Warning */}
+          {job.recoveryReason && (
+            <div className="text-[11px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-2 py-1.5 rounded-md flex items-start gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold block">Auto-recovered</span>
+                <span className="opacity-90">
+                  Original settings failed: {job.recoveryReason}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Metadata Badges */}
           {(job.status === "completed" || job.status === "processing") && (
             <div className="flex flex-wrap gap-2">

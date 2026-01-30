@@ -48,6 +48,8 @@ export interface ProcessingJob {
   duration?: number;
   size?: string; // Formatted size e.g. "1.2 MB"
   isCorrupted?: boolean;
+  attempt?: number;
+  recoveryReason?: string;
 }
 
 export interface LogEntry {

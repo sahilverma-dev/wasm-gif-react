@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ProcessingJob } from "../types";
+import type { ProcessingJob, GifSettings } from "../types";
 
 interface JobState {
   jobs: ProcessingJob[];
@@ -10,6 +10,7 @@ interface JobState {
   completeJob: (id: string, resultUrl: string, size?: string) => void;
   failJob: (id: string, error: string) => void;
   cancelJob: (id: string) => void;
+  retryJob: (id: string, newSettings: GifSettings, reason: string) => void;
   clearCompleted: () => void;
   setProcessing: (isProcessing: boolean) => void;
 }
@@ -47,6 +48,22 @@ export const useJobStore = create<JobState>((set) => ({
     set((state) => ({
       jobs: state.jobs.map((j) =>
         j.id === id ? { ...j, status: "cancelled" } : j,
+      ),
+    })),
+
+  retryJob: (id, newSettings, reason) =>
+    set((state) => ({
+      jobs: state.jobs.map((j) =>
+        j.id === id
+          ? {
+              ...j,
+              status: "pending",
+              progress: 0,
+              settings: newSettings,
+              attempt: (j.attempt || 1) + 1,
+              recoveryReason: reason,
+            }
+          : j,
       ),
     })),
 
