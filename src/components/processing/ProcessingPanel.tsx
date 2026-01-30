@@ -9,6 +9,7 @@ import { JobList } from "./JobList";
 import { cn } from "../../lib/utils";
 import { formatTime } from "../../lib/video-utils";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 import {
   Select,
@@ -200,9 +201,22 @@ export function ProcessingPanel() {
 
         {/* FPS */}
         <div className="space-y-2">
-          <Label className="flex justify-between text-sm">
-            <span>Frame Rate</span>
-            <span className="text-primary">{settings.fps} FPS</span>
+          <Label className="flex justify-between items-center text-sm">
+            <span>Frame Rate (FPS)</span>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={1}
+                max={120}
+                value={settings.fps}
+                onChange={(e) => {
+                  let val = Number(e.target.value);
+                  if (val > 120) val = 120;
+                  setSettings({ ...settings, fps: val });
+                }}
+                className="h-8 w-16 text-center p-1"
+              />
+            </div>
           </Label>
           <Slider
             step={1}
