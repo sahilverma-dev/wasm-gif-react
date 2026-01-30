@@ -1,6 +1,6 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
-import coreURL from "@ffmpeg/core/dist/esm/ffmpeg-core.js?url";
-import wasmURL from "@ffmpeg/core/dist/esm/ffmpeg-core.wasm?url";
+import { toBlobURL } from "@ffmpeg/util";
+
 import type { WorkerMessage, WorkerResponse } from "../types";
 
 let ffmpeg: FFmpeg | null = null;
@@ -55,9 +55,19 @@ async function loadFFmpeg() {
   });
 
   try {
+    const baseURL =
+      "https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@0.12.10/dist/esm";
+
     await ffmpeg.load({
-      coreURL: coreURL,
-      wasmURL: wasmURL,
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await toBlobURL(
+        `${baseURL}/ffmpeg-core.wasm`,
+        "application/wasm",
+      ),
+      workerURL: await toBlobURL(
+        `${baseURL}/ffmpeg-core.worker.js`,
+        "text/javascript",
+      ),
     });
 
     postMessage({ type: "LOADED" } as WorkerResponse);
