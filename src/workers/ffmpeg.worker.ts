@@ -54,6 +54,8 @@ async function loadFFmpeg() {
   });
 
   try {
+    // const baseURL = "/ffmpeg";
+
     const baseURL =
       "https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@0.12.10/dist/esm";
 
