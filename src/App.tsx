@@ -101,7 +101,6 @@ function App() {
                 {activeVideoId ? (
                   <div className="space-y-6">
                     <VideoPlayer />
-                    <LogPanel />
                   </div>
                 ) : (
                   <div className="h-64 border-2 border-dashed rounded-xl flex items-center justify-center text-muted-foreground bg-muted/20">
@@ -127,6 +126,7 @@ function App() {
               </div>
               <VideoList />
             </div>
+            <LogPanel />
           </div>
         )}
       </main>

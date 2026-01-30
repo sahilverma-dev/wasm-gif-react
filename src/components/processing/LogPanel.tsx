@@ -1,9 +1,10 @@
 import { useLogStore } from "../../store/useLogStore";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { X, Trash2, Filter, Power, PowerOff } from "lucide-react";
+import { X, Trash2, Filter } from "lucide-react";
 import { useRef, useEffect } from "react";
 import { cn } from "../../lib/utils";
+import { ScrollArea } from "../ui/scroll-area";
 
 export function LogPanel() {
   const { logs, clearLogs, isEnabled, setLoggingEnabled, filter, setFilter } =
@@ -30,9 +31,9 @@ export function LogPanel() {
   return (
     <div className="flex flex-col h-full bg-card border rounded-2xl shadow-sm overflow-hidden min-h-[300px]">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b bg-muted/30">
+      <div className="flex items-center justify-between p-2 border-b bg-muted/30">
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-sm">FFmpeg Logs</h3>
+          <h3 className="font-semibold text-sm pl-1">FFmpeg Logs</h3>
           <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-md border">
             {filteredLogs.length}
           </span>
@@ -40,24 +41,20 @@ export function LogPanel() {
 
         <div className="flex items-center gap-1">
           <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
+            variant="secondary"
+            size="sm"
             onClick={() => setLoggingEnabled(!isEnabled)}
+            className="h-8"
             title={isEnabled ? "Disable Logs" : "Enable Logs"}
           >
-            {isEnabled ? (
-              <Power className="w-4 h-4 text-green-500" />
-            ) : (
-              <PowerOff className="w-4 h-4 text-muted-foreground" />
-            )}
+            {isEnabled ? "Disable" : "Enable"}
           </Button>
           <Button
-            variant="ghost"
+            variant="default"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-destructive"
             onClick={clearLogs}
             title="Clear Logs"
+            className="size-8"
           >
             <Trash2 className="w-4 h-4" />
           </Button>
@@ -90,42 +87,44 @@ export function LogPanel() {
       {/* Logs Area */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-3 space-y-1 font-mono text-[10px] sm:text-xs bg-black/90 text-zinc-300"
+        className="flex-1 p-3 space-y-1 font-mono text-[10px] sm:text-xs bg-black/90 text-zinc-300"
       >
-        {!isEnabled && logs.length === 0 && (
-          <div className="flex items-center justify-center h-full text-muted-foreground/50 italic">
-            Logging is disabled
-          </div>
-        )}
+        <ScrollArea className="max-h-[500px] overflow-y-auto">
+          {!isEnabled && logs.length === 0 && (
+            <div className="flex items-center justify-center h-full text-muted-foreground/50 italic">
+              Logging is disabled
+            </div>
+          )}
 
-        {isEnabled && logs.length === 0 && (
-          <div className="flex items-center justify-center h-full text-muted-foreground/50 italic">
-            No logs yet...
-          </div>
-        )}
+          {isEnabled && logs.length === 0 && (
+            <div className="flex items-center justify-center h-full text-muted-foreground/50 italic">
+              No logs yet...
+            </div>
+          )}
 
-        {filteredLogs.map((log) => (
-          <div key={log.id} className="flex gap-2">
-            <span className="text-zinc-500 shrink-0 select-none">
-              {new Date(log.timestamp).toLocaleTimeString([], {
-                hour12: false,
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}
-            </span>
-            <span
-              className={cn(
-                "break-all",
-                log.type === "error" && "text-red-400 font-bold",
-                log.type === "ffmpeg" && "text-blue-300/80",
-                log.type === "info" && "text-green-300/80",
-              )}
-            >
-              {log.message}
-            </span>
-          </div>
-        ))}
+          {filteredLogs.map((log) => (
+            <div key={log.id} className="flex gap-2">
+              <span className="text-zinc-500 shrink-0 select-none">
+                {new Date(log.timestamp).toLocaleTimeString([], {
+                  hour12: false,
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
+                })}
+              </span>
+              <span
+                className={cn(
+                  "break-all",
+                  log.type === "error" && "text-red-400 font-bold",
+                  log.type === "ffmpeg" && "text-blue-300/80",
+                  log.type === "info" && "text-green-300/80",
+                )}
+              >
+                {log.message}
+              </span>
+            </div>
+          ))}
+        </ScrollArea>
       </div>
     </div>
   );
