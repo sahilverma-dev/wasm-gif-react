@@ -202,8 +202,20 @@ export function useJobProcessor() {
       // 4. palettegen -> [palette]
       // 5. [video][palette] paletteuse (dither settings)
 
-      const scaleStr =
-        width === "auto" ? "" : `,scale=${width}:-2:flags=lanczos`;
+      // 5. [video][palette] paletteuse (dither settings)
+
+      let targetWidth = width === "auto" ? video.width : width;
+
+      // Smart Scaling: Cap resolution to source width to prevent upscaling
+      if (targetWidth > video.width) {
+        addLog(
+          `Smart Scaling: Capping output width to source (${video.width}px) from requested ${targetWidth}px`,
+          "info",
+        );
+        targetWidth = video.width;
+      }
+
+      const scaleStr = `,scale=${targetWidth}:-2:flags=lanczos`;
 
       // Map Quality to Dither Settings
       let dither = "bayer:bayer_scale=5"; // Medium default
