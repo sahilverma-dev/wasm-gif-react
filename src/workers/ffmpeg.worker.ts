@@ -93,6 +93,10 @@ async function transcodeVideo(job: TranscodeJob) {
   // Read output
   const data = await ffmpeg.readFile(outputName);
 
+  if (typeof data === "string" ? data.length === 0 : data.byteLength === 0) {
+    throw new Error("Conversion failed: Output file is empty");
+  }
+
   // Fix type assertion for Blob
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const blobData = data as any;

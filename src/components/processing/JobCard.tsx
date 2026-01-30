@@ -49,7 +49,7 @@ export function JobCard({ job, onCancel, onDownload }: JobCardProps) {
         <div className="flex-1 min-w-0 space-y-2">
           {/* Title & Status Row */}
           <div className="flex justify-between items-start gap-2">
-            <div className="space-y-0.5 min-w-0">
+            <div className="space-y-0.5 min-w-0 flex-1">
               <p
                 className="text-sm font-medium truncate"
                 title={job.outputFileName}
