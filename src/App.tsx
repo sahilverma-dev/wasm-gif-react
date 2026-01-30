@@ -15,13 +15,14 @@ import { Loader2 } from "lucide-react";
 
 // ... imports
 
+import { useMediaQuery } from "./hooks/useMediaQuery";
+
 function App() {
   const isProcessing = useJobStore((state) => state.isProcessing);
   const { videos, activeVideoId } = useVideoStore();
   const { workerError, isWorkerLoaded } = useJobProcessor();
 
-  // Initialize background worker
-  // but we already called useJobProcessor above, destructuring workerError and isWorkerLoaded
+  const isDesktop = useMediaQuery("(min-width: 768px)");
 
   useEffect(() => {
     if (workerError) {
@@ -58,7 +59,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary/20 flex flex-col transition-colors duration-300">
-      <Toaster position="top-center" richColors />
+      <Toaster position={isDesktop ? "bottom-left" : "top-center"} richColors />
 
       {/* Navbar / Header */}
       <header className="container mx-auto px-4 py-4 flex items-center justify-between">
