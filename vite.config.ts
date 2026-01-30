@@ -11,7 +11,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "apple-touch-icon.png", "mask-icon.svg"],
+      includeAssets: ["image.png"],
       manifest: {
         name: "WASM GIF Converter",
         short_name: "WASM GIF",
@@ -19,9 +19,9 @@ export default defineConfig({
         theme_color: "#ffffff",
         icons: [
           {
-            src: "pwa-icon.svg",
+            src: "image.png",
             sizes: "any",
-            type: "image/svg+xml",
+            type: "image/png",
           },
         ],
       },

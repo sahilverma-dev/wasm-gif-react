@@ -13,8 +13,6 @@ import { cn } from "./lib/utils";
 import { SettingsModal } from "./components/settings/SettingsModal";
 import { Loader2 } from "lucide-react";
 
-// ... imports
-
 import { useMediaQuery } from "./hooks/useMediaQuery";
 
 function App() {
@@ -64,7 +62,7 @@ function App() {
       {/* Navbar / Header */}
       <header className="container mx-auto px-4 py-4 flex items-center justify-between">
         <div className="font-bold text-lg tracking-tight flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-primary" />
+          <img src="./image.png" className="size-6" />
           GIF.WASM
         </div>
         <SettingsModal />
