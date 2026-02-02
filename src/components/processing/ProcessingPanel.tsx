@@ -33,7 +33,7 @@ export function ProcessingPanel() {
   const video = videos.find((v) => v.id === activeVideoId);
   const [mode, setMode] = useState<Mode>("simple");
   const [settings, setSettings] = useState<GifSettings>({
-    width: 480,
+    width: 720,
     fps: 15,
     quality: "medium",
   });
@@ -254,11 +254,11 @@ export function ProcessingPanel() {
               <Input
                 type="number"
                 min={1}
-                max={120}
+                max={60}
                 value={settings.fps}
                 onChange={(e) => {
                   let val = Number(e.target.value);
-                  if (val > 120) val = 120;
+                  if (val > 60) val = 60;
                   setSettings({ ...settings, fps: val });
                 }}
                 className="h-8 w-16 text-center p-1"
@@ -268,7 +268,7 @@ export function ProcessingPanel() {
           <Slider
             step={1}
             min={15}
-            max={120}
+            max={60}
             value={[settings.fps]}
             onValueChange={(value) =>
               setSettings({

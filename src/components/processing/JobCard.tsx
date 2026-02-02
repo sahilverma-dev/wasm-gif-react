@@ -7,6 +7,7 @@ import {
   FileVideo,
   Video,
   Film,
+  ExternalLink,
 } from "lucide-react";
 import type { ProcessingJob } from "../../types";
 
@@ -31,11 +32,21 @@ export function JobCard({ job, onCancel, onDownload }: JobCardProps) {
             )}
             {job.status === "completed" &&
               (job.resultUrl ? (
-                <img
-                  src={job.resultUrl}
-                  className="w-full h-full object-cover rounded-lg"
-                  alt="GIF Preview"
-                />
+                <a
+                  href={job.resultUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative group/image block w-full h-full"
+                >
+                  <img
+                    src={job.resultUrl}
+                    className="w-full h-full object-cover rounded-lg"
+                    alt="GIF Preview"
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/image:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
+                    <ExternalLink className="w-4 h-4 text-white" />
+                  </div>
+                </a>
               ) : (
                 <Check className="w-5 h-5 text-green-500" />
               ))}

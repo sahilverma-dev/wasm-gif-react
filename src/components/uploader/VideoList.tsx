@@ -36,7 +36,7 @@ export function VideoList() {
         status: "pending",
         progress: 0,
         settings: {
-          width: 480,
+          width: 720,
           fps: 15,
           quality: "medium",
         },
