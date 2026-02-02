@@ -1,4 +1,5 @@
 import { useLogStore } from "../../store/useLogStore";
+import { useSettingsStore } from "@/store/useSettingsStore";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { X, Trash2, Filter } from "lucide-react";
@@ -9,6 +10,7 @@ import { ScrollArea } from "../ui/scroll-area";
 export function LogPanel() {
   const { logs, clearLogs, isEnabled, setLoggingEnabled, filter, setFilter } =
     useLogStore();
+  const { showLogs } = useSettingsStore();
 
   // We'll keep local state for open/close if it's a collapsible panel,
   // but let's assume it's displayed in the grid.
@@ -27,6 +29,10 @@ export function LogPanel() {
   const filteredLogs = logs.filter((log) =>
     log.message.toLowerCase().includes(filter.toLowerCase()),
   );
+
+  if (!showLogs) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col h-full bg-card border rounded-2xl shadow-sm overflow-hidden min-h-[300px]">

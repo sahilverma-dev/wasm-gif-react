@@ -10,11 +10,11 @@ import { useJobProcessor } from "./hooks/useJobProcessor";
 import { Toaster, toast } from "sonner";
 import { cn } from "./lib/utils";
 
-import { SettingsModal } from "./components/settings/SettingsModal";
 import { Loader2 } from "lucide-react";
 import { WorkerErrorScreen } from "./components/common/WorkerErrorScreen";
 
 import { useMediaQuery } from "./hooks/useMediaQuery";
+import Header from "./components/header";
 
 function App() {
   const isProcessing = useJobStore((state) => state.isProcessing);
@@ -65,13 +65,7 @@ function App() {
       <Toaster position={isDesktop ? "bottom-left" : "top-center"} richColors />
 
       {/* Navbar / Header */}
-      <header className="container mx-auto px-4 py-4 flex items-center justify-between">
-        <div className="font-bold text-lg tracking-tight flex items-center gap-2">
-          <img src="./logo.png" className="size-6" />
-          GIF.WASM
-        </div>
-        <SettingsModal />
-      </header>
+      <Header />
 
       {/* Main Content */}
       <main className="container mx-auto md:px-4 p-2 md:py-4 flex-1 flex flex-col gap-8 max-w-6xl">

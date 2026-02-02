@@ -8,13 +8,22 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Settings, Github, Moon, Sun, Globe } from "lucide-react";
+import {
+  Settings,
+  Github,
+  Moon,
+  Sun,
+  Globe,
+  AlertTriangle,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSettingsStore } from "@/store/useSettingsStore";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function SettingsModal() {
   const { theme, setTheme } = useTheme();
-  const { removeLimits, toggleRemoveLimits } = useSettingsStore();
+  const { removeLimits, toggleRemoveLimits, showLogs, toggleShowLogs } =
+    useSettingsStore();
 
   return (
     <Dialog>
@@ -57,18 +66,50 @@ export function SettingsModal() {
             </div>
           </div>
 
-          {/* Limits */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label className="text-base">Remove Limits</Label>
-              <p className="text-xs text-muted-foreground">
-                Process longer videos (Experimental)
-              </p>
+          <div className="space-y-4">
+            {/* Limits */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-base">Remove Limits</Label>
+                <p className="text-xs text-muted-foreground">
+                  Process longer videos (Experimental)
+                </p>
+              </div>
+              <Switch
+                checked={removeLimits}
+                onCheckedChange={toggleRemoveLimits}
+              />
             </div>
-            <Switch
-              checked={removeLimits}
-              onCheckedChange={toggleRemoveLimits}
-            />
+
+            {removeLimits && (
+              <Alert variant="destructive" className="py-3">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle className="ml-2 font-semibold">
+                  High Resource Usage
+                </AlertTitle>
+                <AlertDescription className="text-xs ml-2 mt-1">
+                  Disabling limits may cause the browser to crash or freeze.
+                  This allows:
+                  <ul className="list-disc list-inside mt-1 space-y-0.5">
+                    <li>Unlimited imported videos</li>
+                    <li>Uncapped file sizes & resolutions</li>
+                    <li>Unlimited clip creation</li>
+                    <li>Extended queue processing</li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Logs */}
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-base">Show Logs</Label>
+                <p className="text-xs text-muted-foreground">
+                  Display FFmpeg output (Logs for nerds 🤓)
+                </p>
+              </div>
+              <Switch checked={showLogs} onCheckedChange={toggleShowLogs} />
+            </div>
           </div>
 
           {/* Links */}
