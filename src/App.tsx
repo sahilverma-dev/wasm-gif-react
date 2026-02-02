@@ -12,6 +12,7 @@ import { cn } from "./lib/utils";
 
 import { SettingsModal } from "./components/settings/SettingsModal";
 import { Loader2 } from "lucide-react";
+import { WorkerErrorScreen } from "./components/common/WorkerErrorScreen";
 
 import { useMediaQuery } from "./hooks/useMediaQuery";
 
@@ -44,7 +45,11 @@ function App() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isProcessing]);
 
-  if (!isWorkerLoaded && !workerError) {
+  if (workerError) {
+    return <WorkerErrorScreen error={workerError} />;
+  }
+
+  if (!isWorkerLoaded) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
