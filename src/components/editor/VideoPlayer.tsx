@@ -1,8 +1,20 @@
 import { useRef, useState, useEffect } from "react";
 import { useVideoStore } from "../../store/useVideoStore";
-import { Play, Pause, Scissors } from "lucide-react";
+import {
+  Play,
+  Pause,
+  Scissors,
+  Info,
+  ChevronDown,
+  FileText,
+  Monitor,
+  Clock,
+  HardDrive,
+} from "lucide-react";
 import { TrimSlider } from "./TrimSlider";
-import { formatTime } from "../../lib/video-utils";
+import { formatTime, formatBytes } from "../../lib/video-utils";
+import { motion, AnimatePresence } from "motion/react";
+import { cn } from "@/lib/utils";
 
 export function VideoPlayer() {
   const { videos, activeVideoId, updateTrim } = useVideoStore();
@@ -12,6 +24,7 @@ export function VideoPlayer() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const [showMetadata, setShowMetadata] = useState(false);
 
   // Sync state when video changes
   // Sync state when video changes
@@ -124,13 +137,73 @@ export function VideoPlayer() {
             Cut the segment you want to convert
           </span>
         </div>
-
         <TrimSlider
           duration={video.duration}
           startTime={video.trim.start}
           endTime={video.trim.end}
           onValueChange={onTrimChange}
-        />
+        />{" "}
+        {/* Metadata Collapse */}
+        <div className="border p-4">
+          <button
+            onClick={() => setShowMetadata(!showMetadata)}
+            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full group/meta"
+          >
+            <Info className="w-4 h-4" />
+            <span>Video Details</span>
+            <ChevronDown
+              className={cn(
+                "w-4 h-4 transition-transform duration-200 ml-auto opacity-50 group-hover/meta:opacity-100",
+                showMetadata && "rotate-180",
+              )}
+            />
+          </button>
+
+          <AnimatePresence>
+            {showMetadata && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 text-xs md:text-sm">
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5" /> Name
+                    </p>
+                    <p className="font-medium truncate" title={video.file.name}>
+                      {video.file.name}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground flex items-center gap-1.5">
+                      <Monitor className="w-3.5 h-3.5" /> Resolution
+                    </p>
+                    <p className="font-medium">
+                      {video.width} x {video.height}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground flex items-center gap-1.5">
+                      <HardDrive className="w-3.5 h-3.5" /> Size
+                    </p>
+                    <p className="font-medium">
+                      {formatBytes(video.file.size)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" /> Duration
+                    </p>
+                    <p className="font-medium">{formatTime(video.duration)}</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );
