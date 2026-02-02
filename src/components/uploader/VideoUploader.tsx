@@ -6,18 +6,20 @@ import { getMetadata } from "../../lib/video-utils";
 import { type VideoFile } from "../../types";
 import { v4 as uuidv4 } from "uuid";
 import { toast } from "sonner";
+import { useSettingsStore } from "../../store/useSettingsStore";
 
 export function VideoUploader() {
   const addVideos = useVideoStore((state) => state.addVideos);
+  const { removeLimits } = useSettingsStore();
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
       const newVideos: VideoFile[] = [];
       const errors: string[] = [];
 
-      // Process files sequentially to keep UI responsive-ish (could be concurrent but simple for now)
+      // Process files sequentially
       for (const file of acceptedFiles) {
-        if (file.size > 100 * 1024 * 1024) {
+        if (!removeLimits && file.size > 100 * 1024 * 1024) {
           // 100MB limit
           errors.push(`${file.name}: File too large (Max 100MB)`);
           continue;
@@ -26,7 +28,7 @@ export function VideoUploader() {
         try {
           const metadata = await getMetadata(file);
 
-          if (metadata.duration > 60) {
+          if (!removeLimits && metadata.duration > 60) {
             errors.push(`${file.name}: Video too long (Max 60s)`);
             continue;
           }
@@ -55,7 +57,7 @@ export function VideoUploader() {
         errors.forEach((err) => toast.error(err));
       }
     },
-    [addVideos],
+    [addVideos, removeLimits],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -63,7 +65,7 @@ export function VideoUploader() {
     accept: {
       "video/*": [".mp4", ".mov", ".webm"],
     },
-    maxFiles: 10,
+    maxFiles: removeLimits ? undefined : 10,
   });
 
   return (
@@ -93,8 +95,16 @@ export function VideoUploader() {
         {isDragActive ? "Drop videos here" : "Drag & drop videos"}
       </h3>
       <p className="text-sm text-muted-foreground max-w-xs mx-auto mb-6">
-        MP4, MOV, WebM up to 60s. <br />
-        Max size 100MB per file.
+        {removeLimits ? (
+          <span className="text-yellow-500 font-medium">
+            Unlimited files, size & duration.
+          </span>
+        ) : (
+          <>
+            MP4, MOV, WebM up to 60s. <br />
+            Max size 100MB per file.
+          </>
+        )}
       </p>
 
       <button className="px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20">
