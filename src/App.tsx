@@ -67,7 +67,7 @@ function App() {
       {/* Navbar / Header */}
       <header className="container mx-auto px-4 py-4 flex items-center justify-between">
         <div className="font-bold text-lg tracking-tight flex items-center gap-2">
-          <img src="./image.png" className="size-6" />
+          <img src="./logo.png" className="size-6" />
           GIF.WASM
         </div>
         <SettingsModal />
