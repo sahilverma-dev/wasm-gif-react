@@ -1,4 +1,5 @@
 import { useJobStore } from "../../store/useJobStore";
+import { useJobProcessorContext } from "../../hooks/JobProcessorContext";
 import { toast } from "sonner";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
@@ -7,13 +8,16 @@ import { Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 export function JobList() {
-  const { jobs, cancelJob, clearCompleted, isProcessing } = useJobStore();
+  const { jobs, clearCompleted, isProcessing, requeueJob, removeJob } =
+    useJobStore();
+  const { handleCancelJob } = useJobProcessorContext();
 
   if (jobs.length === 0) return null;
 
   const handleDownload = async (url: string, filename: string) => {
     const blob = await fetch(url).then((r) => r.blob());
     saveAs(blob, filename);
+    toast.success("Download started");
   };
 
   const handleDownloadAll = async () => {
@@ -39,7 +43,35 @@ export function JobList() {
     toast.success("Downloaded all GIFs");
   };
 
-  const hasCompleted = jobs.some((j) => j.status === "completed");
+  const handleRetry = (id: string) => {
+    requeueJob(id);
+    toast.info("Job re-queued");
+  };
+
+  const handleRemove = (id: string) => {
+    removeJob(id);
+    toast.info("Job dismissed");
+  };
+
+  const handleClearAll = () => {
+    const count = jobs.filter(
+      (j) =>
+        j.status === "completed" ||
+        j.status === "cancelled" ||
+        j.status === "error",
+    ).length;
+    clearCompleted();
+    if (count > 0) {
+      toast.info(`Cleared ${count} job${count > 1 ? "s" : ""}`);
+    }
+  };
+
+  const hasFinished = jobs.some(
+    (j) =>
+      j.status === "completed" ||
+      j.status === "cancelled" ||
+      j.status === "error",
+  );
 
   return (
     <div className="mt-6 pt-6 border-t space-y-4">
@@ -52,21 +84,23 @@ export function JobList() {
           )}
         </h4>
 
-        {hasCompleted && (
+        {hasFinished && (
           <div className="flex gap-2">
             <button
-              onClick={clearCompleted}
+              onClick={handleClearAll}
               className="text-xs px-2 py-1 rounded-md border text-muted-foreground hover:text-destructive hover:border-destructive transition"
             >
-              Clear Done
+              Clear All
             </button>
 
-            <button
-              onClick={handleDownloadAll}
-              className="text-xs px-2 py-1 rounded-md border border-primary/40 text-primary hover:bg-primary/10 transition"
-            >
-              Download All
-            </button>
+            {jobs.some((j) => j.status === "completed") && (
+              <button
+                onClick={handleDownloadAll}
+                className="text-xs px-2 py-1 rounded-md border border-primary/40 text-primary hover:bg-primary/10 transition"
+              >
+                Download All
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -88,8 +122,10 @@ export function JobList() {
               >
                 <JobCard
                   job={job}
-                  onCancel={cancelJob}
+                  onCancel={handleCancelJob}
                   onDownload={handleDownload}
+                  onRetry={handleRetry}
+                  onRemove={handleRemove}
                 />
               </motion.div>
             ))}

@@ -10,6 +10,8 @@ interface JobState {
   completeJob: (id: string, resultUrl: string, size?: string) => void;
   failJob: (id: string, error: string) => void;
   cancelJob: (id: string) => void;
+  removeJob: (id: string) => void;
+  requeueJob: (id: string) => void;
   retryJob: (id: string, newSettings: GifSettings, reason: string) => void;
   clearCompleted: () => void;
   setProcessing: (isProcessing: boolean) => void;
@@ -51,6 +53,26 @@ export const useJobStore = create<JobState>((set) => ({
       ),
     })),
 
+  removeJob: (id) =>
+    set((state) => ({
+      jobs: state.jobs.filter((j) => j.id !== id),
+    })),
+
+  requeueJob: (id) =>
+    set((state) => ({
+      jobs: state.jobs.map((j) =>
+        j.id === id
+          ? {
+              ...j,
+              status: "pending",
+              progress: 0,
+              error: undefined,
+              recoveryReason: undefined,
+            }
+          : j,
+      ),
+    })),
+
   retryJob: (id, newSettings, reason) =>
     set((state) => ({
       jobs: state.jobs.map((j) =>
@@ -70,7 +92,10 @@ export const useJobStore = create<JobState>((set) => ({
   clearCompleted: () =>
     set((state) => ({
       jobs: state.jobs.filter(
-        (j) => j.status !== "completed" && j.status !== "cancelled",
+        (j) =>
+          j.status !== "completed" &&
+          j.status !== "cancelled" &&
+          j.status !== "error",
       ),
     })),
 

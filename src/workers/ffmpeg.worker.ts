@@ -7,6 +7,7 @@ let ffmpeg: FFmpeg | null = null;
 
 interface TranscodeJob {
   file: File | Blob;
+  inputName: string;
   outputName: string;
   args: string[];
 }
@@ -84,18 +85,38 @@ async function loadFFmpeg() {
 async function transcodeVideo(job: TranscodeJob) {
   if (!ffmpeg) return;
 
-  const { file, outputName, args } = job;
+  const { file, inputName, outputName, args } = job;
 
-  // Write file to FFmpeg FS
-  await ffmpeg.writeFile("input.mp4", await fetchFile(file));
+  // Write file to FFmpeg FS with correct extension for proper demuxing
+  await ffmpeg.writeFile(inputName, await fetchFile(file));
 
-  // Run FFmpeg command
-  await ffmpeg.exec(args);
+  // Run FFmpeg command and check exit code
+  const exitCode = await ffmpeg.exec(args);
+  if (exitCode !== 0) {
+    // Cleanup input before throwing
+    try {
+      await ffmpeg.deleteFile(inputName);
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`FFmpeg exited with code ${exitCode}`);
+  }
 
   // Read output
   const data = await ffmpeg.readFile(outputName);
 
   if (typeof data === "string" ? data.length === 0 : data.byteLength === 0) {
+    // Cleanup before throwing
+    try {
+      await ffmpeg.deleteFile(inputName);
+    } catch {
+      /* ignore */
+    }
+    try {
+      await ffmpeg.deleteFile(outputName);
+    } catch {
+      /* ignore */
+    }
     throw new Error("Conversion failed: Output file is empty");
   }
 
@@ -110,7 +131,7 @@ async function transcodeVideo(job: TranscodeJob) {
   } as WorkerResponse);
 
   // Cleanup
-  await ffmpeg.deleteFile("input.mp4");
+  await ffmpeg.deleteFile(inputName);
   await ffmpeg.deleteFile(outputName);
 }
 

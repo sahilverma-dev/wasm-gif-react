@@ -8,6 +8,8 @@ import {
   Video,
   Film,
   ExternalLink,
+  Ban,
+  RotateCcw,
 } from "lucide-react";
 import type { ProcessingJob } from "../../types";
 
@@ -15,9 +17,19 @@ interface JobCardProps {
   job: ProcessingJob;
   onCancel: (id: string) => void;
   onDownload: (url: string, filename: string) => void;
+  onRetry: (id: string) => void;
+  onRemove: (id: string) => void;
 }
 
-export function JobCard({ job, onCancel, onDownload }: JobCardProps) {
+export function JobCard({
+  job,
+  onCancel,
+  onDownload,
+  onRetry,
+  onRemove,
+}: JobCardProps) {
+  const isTerminal = job.status === "error" || job.status === "cancelled";
+
   return (
     <div className="group rounded-xl border bg-card p-3 shadow-sm transition-all hover:shadow-md animate-in slide-in-from-bottom-2 fade-in duration-300">
       <div className="flex gap-4">
@@ -53,6 +65,9 @@ export function JobCard({ job, onCancel, onDownload }: JobCardProps) {
             {job.status === "error" && (
               <AlertTriangle className="w-5 h-5 text-destructive" />
             )}
+            {job.status === "cancelled" && (
+              <Ban className="w-5 h-5 text-muted-foreground" />
+            )}
           </div>
         </div>
 
@@ -79,6 +94,11 @@ export function JobCard({ job, onCancel, onDownload }: JobCardProps) {
                 {job.status === "pending" && <span>Queued</span>}
                 {job.status === "error" && (
                   <span className="text-destructive font-medium">Failed</span>
+                )}
+                {job.status === "cancelled" && (
+                  <span className="text-muted-foreground font-medium">
+                    Cancelled
+                  </span>
                 )}
               </p>
             </div>
@@ -173,6 +193,26 @@ export function JobCard({ job, onCancel, onDownload }: JobCardProps) {
             >
               <X className="w-4 h-4" />
             </button>
+          )}
+
+          {/* Retry & Dismiss for terminal states */}
+          {isTerminal && (
+            <>
+              <button
+                onClick={() => onRetry(job.id)}
+                className="p-1.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md transition-colors"
+                title="Retry"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => onRemove(job.id)}
+                className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </>
           )}
         </div>
       </div>

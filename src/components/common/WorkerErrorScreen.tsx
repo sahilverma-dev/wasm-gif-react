@@ -11,7 +11,7 @@ export function WorkerErrorScreen({ error }: WorkerErrorScreenProps) {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-6 p-4 text-center animate-in fade-in duration-500">
+    <div className="min-h-dvh bg-background flex flex-col items-center justify-center gap-6 p-4 text-center animate-in fade-in duration-500">
       <div className="rounded-full bg-destructive/10 p-4">
         <AlertTriangle className="w-12 h-12 text-destructive" />
       </div>

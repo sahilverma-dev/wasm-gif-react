@@ -2,10 +2,11 @@ import { useLogStore } from "../../store/useLogStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { X, Trash2, Filter } from "lucide-react";
+import { X, Trash2, Filter, ClipboardIcon } from "lucide-react";
 import { useRef, useEffect } from "react";
 import { cn } from "../../lib/utils";
 import { ScrollArea } from "../ui/scroll-area";
+import { toast } from "sonner";
 
 export function LogPanel() {
   const { logs, clearLogs, isEnabled, setLoggingEnabled, filter, setFilter } =
@@ -30,6 +31,18 @@ export function LogPanel() {
     log.message.toLowerCase().includes(filter.toLowerCase()),
   );
 
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        logs.map((log) => JSON.stringify(log)).join("\n"),
+      );
+      toast.success("Logs copied!");
+    } catch (error) {
+      console.log(error);
+      toast.error("Failed to copy logs");
+    }
+  };
+
   if (!showLogs) {
     return null;
   }
@@ -46,6 +59,15 @@ export function LogPanel() {
         </div>
 
         <div className="flex items-center gap-1">
+          <Button
+            variant="secondary"
+            size="icon"
+            onClick={handleCopy}
+            title="Copy Logs"
+            className="size-8"
+          >
+            <ClipboardIcon className="w-4 h-4" />
+          </Button>
           <Button
             variant="secondary"
             size="sm"

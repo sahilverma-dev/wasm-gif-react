@@ -80,7 +80,7 @@ export function VideoList() {
           newVideos.push({
             id: uuidv4(),
             file,
-            blobUrl: URL.createObjectURL(file), // Still useful for player
+            blobUrl: URL.createObjectURL(file),
             ...metadata,
             trim: { start: 0, end: metadata.duration },
             clips: [],
