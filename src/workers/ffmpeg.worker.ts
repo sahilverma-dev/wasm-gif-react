@@ -1,144 +1,202 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { toBlobURL } from "@ffmpeg/util";
 
-import type { WorkerMessage, WorkerResponse } from "../types";
+import type {
+  TranscodePayload,
+  WorkerMessage,
+  WorkerResponse,
+} from "../types";
+
+// Multi-threaded core is required for reasonable encoding speeds. It is
+// fetched at runtime because the wasm binary is far too large to bundle.
+const CORE_VERSION = "0.12.10";
+const CORE_CDNS = [
+  `https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@${CORE_VERSION}/dist/esm`,
+  `https://unpkg.com/@ffmpeg/core-mt@${CORE_VERSION}/dist/esm`,
+];
 
 let ffmpeg: FFmpeg | null = null;
+let loadPromise: Promise<void> | null = null;
+let activeJobId: string | null = null;
 
-interface TranscodeJob {
-  file: File | Blob;
-  inputName: string;
-  outputName: string;
-  args: string[];
-}
+// Handle messages from the main thread. Jobs are serialized: the main thread
+// can post the next job the moment DONE arrives, and without this queue that
+// job would race the previous job's filesystem cleanup.
+let queue: Promise<void> = Promise.resolve();
 
-// Handle messages from the main thread
-self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
-  const { type, payload } = event.data;
-
-  try {
-    switch (type) {
-      case "LOAD":
-        await loadFFmpeg();
-        break;
-      case "TRANSCODE":
-        if (!ffmpeg) throw new Error("FFmpeg not loaded");
-        await transcodeVideo(payload as TranscodeJob);
-        break;
-      case "CANCEL":
-        break;
-    }
-  } catch (error: unknown) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    postMessage({ type: "ERROR", payload: errorMessage } as WorkerResponse);
-  }
+self.onmessage = (event: MessageEvent<WorkerMessage>) => {
+  queue = queue
+    .then(() => handleMessage(event.data))
+    .catch((error: unknown) => {
+      post({
+        type: "ERROR",
+        payload:
+          error instanceof Error ? error.message : "Unknown worker error.",
+      });
+    });
 };
 
-async function loadFFmpeg() {
+async function handleMessage(message: WorkerMessage): Promise<void> {
+  switch (message.type) {
+    case "LOAD":
+      await loadFFmpeg();
+      break;
+    case "TRANSCODE":
+      if (!ffmpeg) {
+        // The main thread normally waits for LOADED, but a freshly restarted
+        // worker can still receive a job first.
+        await loadFFmpeg();
+        if (!ffmpeg) return;
+      }
+      await transcodeVideo(message.payload);
+      break;
+    case "CANCEL":
+      // ffmpeg.exec() cannot be interrupted from inside the worker. The main
+      // thread terminates the worker to cancel, so there is nothing to do here.
+      break;
+  }
+}
+
+async function loadFFmpeg(): Promise<void> {
   if (ffmpeg) {
-    postMessage({ type: "LOADED" } as WorkerResponse);
+    post({ type: "LOADED" });
     return;
   }
 
-  ffmpeg = new FFmpeg();
-
-  ffmpeg.on("log", ({ message }) => {
-    postMessage({ type: "LOG", payload: message } as WorkerResponse);
-  });
-
-  ffmpeg.on("progress", ({ progress }) => {
-    postMessage({
-      type: "PROGRESS",
-      payload: progress * 100,
-    } as WorkerResponse);
-  });
+  // Reuse an in-flight load (StrictMode mounts the worker once, but a retry
+  // could still race a previous attempt).
+  if (!loadPromise) {
+    loadPromise = loadCore().finally(() => {
+      loadPromise = null;
+    });
+  }
 
   try {
-    // const baseURL = "/ffmpeg";
-
-    const baseURL =
-      "https://cdn.jsdelivr.net/npm/@ffmpeg/core-mt@0.12.10/dist/esm";
-
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await toBlobURL(
-        `${baseURL}/ffmpeg-core.wasm`,
-        "application/wasm",
-      ),
-      workerURL: await toBlobURL(
-        `${baseURL}/ffmpeg-core.worker.js`,
-        "text/javascript",
-      ),
-    });
-
-    postMessage({ type: "LOADED" } as WorkerResponse);
-  } catch (e: unknown) {
-    console.error("FFmpeg load error:", e);
-    postMessage({
+    await loadPromise;
+  } catch (error) {
+    ffmpeg = null;
+    post({
       type: "ERROR",
-      payload: e instanceof Error ? e.message : "Failed to load FFmpeg",
-    } as WorkerResponse);
+      payload: error instanceof Error ? error.message : "Failed to load FFmpeg",
+      fatal: true,
+    });
   }
 }
 
-async function transcodeVideo(job: TranscodeJob) {
+async function loadCore(): Promise<void> {
+  if (typeof SharedArrayBuffer === "undefined" || !self.crossOriginIsolated) {
+    throw new Error(
+      "SharedArrayBuffer is unavailable. The page must be served with Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: require-corp.",
+    );
+  }
+
+  let lastError: unknown = null;
+
+  for (const baseURL of CORE_CDNS) {
+    // A failed load can leave an instance half-initialised, so each mirror
+    // gets a fresh FFmpeg object.
+    const instance = new FFmpeg();
+
+    instance.on("log", ({ message }) => {
+      post({ type: "LOG", payload: message });
+    });
+
+    instance.on("progress", ({ progress }) => {
+      if (!activeJobId) return;
+      const percent = Math.max(0, Math.min(99, Math.round(progress * 100)));
+      post({ type: "PROGRESS", jobId: activeJobId, payload: percent });
+    });
+
+    try {
+      await instance.load({
+        coreURL: await toBlobURL(
+          `${baseURL}/ffmpeg-core.js`,
+          "text/javascript",
+        ),
+        wasmURL: await toBlobURL(
+          `${baseURL}/ffmpeg-core.wasm`,
+          "application/wasm",
+        ),
+        workerURL: await toBlobURL(
+          `${baseURL}/ffmpeg-core.worker.js`,
+          "text/javascript",
+        ),
+      });
+
+      ffmpeg = instance;
+      post({ type: "LOADED" });
+      return;
+    } catch (error) {
+      lastError = error;
+      console.warn(`Failed to load FFmpeg core from ${baseURL}`, error);
+      try {
+        instance.terminate();
+      } catch {
+        // Nothing to release if the instance never started.
+      }
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to download the FFmpeg core from every mirror.");
+}
+
+async function transcodeVideo(job: TranscodePayload): Promise<void> {
   if (!ffmpeg) return;
-
-  const { file, inputName, outputName, args } = job;
-
-  // Write file to FFmpeg FS with correct extension for proper demuxing
-  await ffmpeg.writeFile(inputName, await fetchFile(file));
-
-  // Run FFmpeg command and check exit code
-  const exitCode = await ffmpeg.exec(args);
-  if (exitCode !== 0) {
-    // Cleanup input before throwing
-    try {
-      await ffmpeg.deleteFile(inputName);
-    } catch {
-      /* ignore */
-    }
-    throw new Error(`FFmpeg exited with code ${exitCode}`);
+  if (activeJobId) {
+    post({
+      type: "ERROR",
+      jobId: job.jobId,
+      payload: "The video processor is busy with another job.",
+    });
+    return;
   }
 
-  // Read output
-  const data = await ffmpeg.readFile(outputName);
+  const { jobId, file, inputName, outputName, args } = job;
+  activeJobId = jobId;
 
-  if (typeof data === "string" ? data.length === 0 : data.byteLength === 0) {
-    // Cleanup before throwing
-    try {
-      await ffmpeg.deleteFile(inputName);
-    } catch {
-      /* ignore */
+  try {
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    const exitCode = await ffmpeg.exec(args);
+    if (exitCode !== 0) {
+      throw new Error(`FFmpeg exited with code ${exitCode}.`);
     }
-    try {
-      await ffmpeg.deleteFile(outputName);
-    } catch {
-      /* ignore */
+
+    const data = await ffmpeg.readFile(outputName);
+    const size = typeof data === "string" ? data.length : data.byteLength;
+
+    if (size === 0) {
+      throw new Error("Conversion failed: the output GIF is empty.");
     }
-    throw new Error("Conversion failed: Output file is empty");
+
+    const blob = new Blob([data as BlobPart], { type: "image/gif" });
+    post({ type: "DONE", jobId, payload: { blob, outputName } });
+  } catch (error) {
+    post({
+      type: "ERROR",
+      jobId,
+      payload: error instanceof Error ? error.message : "Conversion failed.",
+    });
+  } finally {
+    activeJobId = null;
+
+    // Always clear the virtual filesystem, even when encoding failed.
+    for (const name of [inputName, outputName]) {
+      try {
+        await ffmpeg.deleteFile(name);
+      } catch {
+        // The file may never have been created; nothing to clean up.
+      }
+    }
   }
-
-  // Fix type assertion for Blob
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const blobData = data as any;
-  const blob = new Blob([blobData], { type: "image/gif" });
-
-  postMessage({
-    type: "DONE",
-    payload: { blob, outputName },
-  } as WorkerResponse);
-
-  // Cleanup
-  await ffmpeg.deleteFile(inputName);
-  await ffmpeg.deleteFile(outputName);
 }
 
 async function fetchFile(file: File | Blob): Promise<Uint8Array> {
   return new Uint8Array(await file.arrayBuffer());
 }
 
-function postMessage(response: WorkerResponse) {
+function post(response: WorkerResponse) {
   self.postMessage(response);
 }

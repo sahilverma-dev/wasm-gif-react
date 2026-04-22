@@ -59,12 +59,22 @@ export interface LogEntry {
   type: "info" | "error" | "ffmpeg";
 }
 
-export interface WorkerMessage {
-  type: "LOAD" | "TRANSCODE" | "CANCEL";
-  payload?: unknown;
+export interface TranscodePayload {
+  jobId: string;
+  file: File | Blob;
+  inputName: string;
+  outputName: string;
+  args: string[];
 }
 
-export interface WorkerResponse {
-  type: "LOADED" | "PROGRESS" | "DONE" | "ERROR" | "LOG";
-  payload?: unknown;
-}
+export type WorkerMessage =
+  | { type: "LOAD" }
+  | { type: "TRANSCODE"; payload: TranscodePayload }
+  | { type: "CANCEL" };
+
+export type WorkerResponse =
+  | { type: "LOADED" }
+  | { type: "LOG"; payload: string }
+  | { type: "PROGRESS"; jobId: string; payload: number }
+  | { type: "DONE"; jobId: string; payload: { blob: Blob; outputName: string } }
+  | { type: "ERROR"; jobId?: string; payload: string; fatal?: boolean };
