@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { VideoFile, VideoClip } from "../types";
+import { releaseObjectUrl } from "../lib/blob";
 
 interface VideoState {
   videos: VideoFile[];
@@ -13,7 +14,7 @@ interface VideoState {
   updateClip: (
     videoId: string,
     clipId: string,
-    updates: Partial<VideoClip>
+    updates: Partial<VideoClip>,
   ) => void;
   clearAll: () => void;
 }
@@ -31,6 +32,12 @@ export const useVideoStore = create<VideoState>((set) => ({
 
   removeVideo: (id) =>
     set((state) => {
+      const removed = state.videos.find((v) => v.id === id);
+      if (removed) {
+        releaseObjectUrl(removed.blobUrl);
+        releaseObjectUrl(removed.thumbnailUrl);
+      }
+
       const newVideos = state.videos.filter((v) => v.id !== id);
       return {
         videos: newVideos,
@@ -46,7 +53,7 @@ export const useVideoStore = create<VideoState>((set) => ({
   updateTrim: (id, start, end) =>
     set((state) => ({
       videos: state.videos.map((v) =>
-        v.id === id ? { ...v, trim: { start, end } } : v
+        v.id === id ? { ...v, trim: { start, end } } : v,
       ),
     })),
 
@@ -55,7 +62,7 @@ export const useVideoStore = create<VideoState>((set) => ({
   addClip: (videoId, clip) =>
     set((state) => ({
       videos: state.videos.map((v) =>
-        v.id === videoId ? { ...v, clips: [...(v.clips || []), clip] } : v
+        v.id === videoId ? { ...v, clips: [...(v.clips || []), clip] } : v,
       ),
     })),
 
@@ -64,7 +71,7 @@ export const useVideoStore = create<VideoState>((set) => ({
       videos: state.videos.map((v) =>
         v.id === videoId
           ? { ...v, clips: v.clips?.filter((c) => c.id !== clipId) || [] }
-          : v
+          : v,
       ),
     })),
 
@@ -76,12 +83,19 @@ export const useVideoStore = create<VideoState>((set) => ({
               ...v,
               clips:
                 v.clips?.map((c) =>
-                  c.id === clipId ? { ...c, ...updates } : c
+                  c.id === clipId ? { ...c, ...updates } : c,
                 ) || [],
             }
-          : v
+          : v,
       ),
     })),
 
-  clearAll: () => set({ videos: [], activeVideoId: null }),
+  clearAll: () =>
+    set((state) => {
+      state.videos.forEach((video) => {
+        releaseObjectUrl(video.blobUrl);
+        releaseObjectUrl(video.thumbnailUrl);
+      });
+      return { videos: [], activeVideoId: null };
+    }),
 }));
