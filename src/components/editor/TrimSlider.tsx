@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Slider } from "../../components/ui/slider";
+import { Slider } from "../ui/slider";
 import { formatTime } from "../../lib/video-utils";
 
 interface TrimSliderProps {
@@ -19,51 +19,53 @@ export function TrimSlider({
   className,
   isProcessing,
 }: TrimSliderProps) {
-  const [localValue, setLocalValue] = React.useState([startTime, endTime]);
+  const safeDuration = Math.max(0.1, Number.isFinite(duration) ? duration : 0.1);
 
-  // Sync local value when props change externally
+  const [localValue, setLocalValue] = React.useState([
+    Math.min(startTime, safeDuration - 0.1),
+    Math.max(Math.min(endTime, safeDuration), 0.1),
+  ]);
+
+  // Sync when the range changes from outside (new video, reset).
   React.useEffect(() => {
     setLocalValue([startTime, endTime]);
   }, [startTime, endTime]);
 
-  const handleChange = (newValues: number[]) => {
-    // Prevent crossing or too short?
-    // For now trust the slider
-    setLocalValue(newValues);
-    onValueChange(newValues[0], newValues[1]);
+  const handleChange = (values: number[]) => {
+    const next: [number, number] = [
+      Math.max(0, Math.min(values[0], safeDuration - 0.1)),
+      Math.max(0.1, Math.min(values[1], safeDuration)),
+    ];
+
+    if (next[1] - next[0] < 0.1) return;
+
+    setLocalValue(next);
+    onValueChange(next[0], next[1]);
   };
 
   return (
-    <div className={`w-full space-y-2 ${className}`}>
-      <div className="flex justify-between text-xs text-muted-foreground font-medium uppercase tracking-wider">
-        <span>Start: {formatTime(localValue[0])}</span>
-        <span className="text-primary">
-          Duration: {formatTime(localValue[1] - localValue[0])}
+    <div className={`w-full space-y-2 ${className ?? ""}`}>
+      <div className="grid grid-cols-3 gap-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase sm:text-xs">
+        <span className="truncate">Start: {formatTime(localValue[0])}</span>
+        <span className="truncate text-center text-primary">
+          Length: {formatTime(localValue[1] - localValue[0])}
         </span>
-        <span>End: {formatTime(localValue[1])}</span>
+        <span className="truncate text-right">
+          End: {formatTime(localValue[1])}
+        </span>
       </div>
 
       <Slider
         disabled={isProcessing}
         value={localValue}
         min={0}
-        max={duration}
+        max={safeDuration}
         step={0.1}
         minStepsBetweenThumbs={1}
         onValueChange={handleChange}
-        className="py-2 md:py-4 cursor-pointer"
+        aria-label="Trim range"
+        className="cursor-pointer py-3"
       />
-
-      {/* Visual Timeline Bar (placeholder for future waveforms) */}
-      <div className="h-2 w-full bg-muted rounded-full relative overflow-hidden -mt-5 -z-10 pointer-events-none">
-        <div
-          className="absolute top-0 bottom-0 bg-primary/20 h-full"
-          style={{
-            left: `${(localValue[0] / duration) * 100}%`,
-            right: `${100 - (localValue[1] / duration) * 100}%`,
-          }}
-        />
-      </div>
     </div>
   );
 }
