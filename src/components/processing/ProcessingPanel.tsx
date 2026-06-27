@@ -1,16 +1,18 @@
 import { useState } from "react";
+import { v4 as uuidv4 } from "uuid";
+import { toast } from "sonner";
+import { Film, Grid, Settings } from "lucide-react";
 import { useVideoStore } from "../../store/useVideoStore";
 import { useJobStore } from "../../store/useJobStore";
 import { type GifSettings, type ProcessingJob } from "../../types";
-import { Settings, Grid, Film } from "lucide-react";
-import { toast } from "sonner";
-import { v4 as uuidv4 } from "uuid";
-import { JobList } from "./JobList";
-import { cn } from "../../lib/utils";
+import { clampRange } from "../../lib/video-files";
 import { formatTime } from "../../lib/video-utils";
+import { cn } from "../../lib/utils";
+import { JobList } from "./JobList";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-
+import { Label } from "../ui/label";
+import { Slider } from "../ui/slider";
 import {
   Select,
   SelectContent,
@@ -18,19 +20,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "../ui/label";
-import { Slider } from "../ui/slider";
 
 type Mode = "simple" | "clips";
 
-// consts
 const RESOLUTIONS = [144, 320, 480, 720, 1080];
 
-export function ProcessingPanel() {
-  const { videos, activeVideoId } = useVideoStore();
-  const { addJob } = useJobStore();
+const QUALITY_BYTES_PER_PIXEL: Record<GifSettings["quality"], number> = {
+  low: 0.03,
+  medium: 0.045,
+  high: 0.065,
+};
 
-  const video = videos.find((v) => v.id === activeVideoId);
+function estimateGifBytes(
+  duration: number,
+  width: number,
+  fps: number,
+  quality: GifSettings["quality"],
+): number {
+  const height = Math.round((width * 9) / 16);
+  const frames = Math.max(1, duration * fps);
+  return frames * width * height * QUALITY_BYTES_PER_PIXEL[quality];
+}
+
+export function ProcessingPanel() {
+  const videos = useVideoStore((state) => state.videos);
+  const activeVideoId = useVideoStore((state) => state.activeVideoId);
+  const addJob = useJobStore((state) => state.addJob);
+
+  const video = videos.find((entry) => entry.id === activeVideoId);
   const [mode, setMode] = useState<Mode>("simple");
   const [settings, setSettings] = useState<GifSettings>({
     width: 720,
@@ -38,265 +55,260 @@ export function ProcessingPanel() {
     quality: "medium",
   });
 
-  // Clip Mode State
   const [clipCount, setClipCount] = useState(3);
   const [clipDuration, setClipDuration] = useState(2);
 
-  const handleGenerate = () => {
-    if (!video) return;
+  if (!video) return null;
 
-    const job: ProcessingJob = {
-      id: uuidv4(),
-      videoId: video.id,
-      status: "pending",
-      progress: 0,
-      settings: { ...settings },
-      outputFileName: `${video.file.name.split(".")[0]}_${Date.now()}.gif`,
-    };
-    addJob(job);
-    toast.info("Added to queue");
+  const range = clampRange(video.trim, video.duration);
+  const selectedDuration = Math.max(0, range.end - range.start);
+  const tooShort = selectedDuration < 0.1;
+  const effectiveWidth =
+    settings.width === "auto" ? video.width : Math.min(settings.width, video.width);
+  const outputWidth = Math.max(2, effectiveWidth % 2 === 0 ? effectiveWidth : effectiveWidth - 1);
+
+  const createJob = (
+    overrides: Partial<ProcessingJob> = {},
+  ): ProcessingJob => ({
+    id: uuidv4(),
+    videoId: video.id,
+    status: "pending",
+    progress: 0,
+    settings: { ...settings },
+    outputFileName: `${video.file.name.split(".")[0]}_${Date.now()}.gif`,
+    resolution: `${outputWidth}px`,
+    fps: settings.fps,
+    duration: selectedDuration,
+    trimRange: range,
+    ...overrides,
+  });
+
+  const handleGenerate = () => {
+    if (tooShort) {
+      toast.error("Select at least 0.1 seconds of video.");
+      return;
+    }
+    addJob(createJob());
+    toast.success("Added to the queue");
   };
 
-  const generateBatch = () => {
-    if (!video) return;
-    const trimStart = video.trim.start;
-    const trimEnd = video.trim.end;
-    const totalDuration = trimEnd - trimStart;
-
-    // Ensure clip duration is valid
-    const validClipDuration = Math.min(clipDuration, totalDuration);
-    if (validClipDuration !== clipDuration) setClipDuration(validClipDuration);
-
-    // Safety check
-    if (clipDuration > totalDuration) {
-      toast.error("Clip duration longer than selected video range");
+  const handleGenerateBatch = () => {
+    if (tooShort) {
+      toast.error("Select at least 0.1 seconds of video.");
       return;
     }
 
-    const step = (totalDuration - clipDuration) / (clipCount - 1 || 1);
+    const perClip = Math.min(clipDuration, selectedDuration);
+    // Overlapping clips would produce identical GIFs, so never ask for more
+    // clips than can fit in the selection.
+    const maxDistinctClips = Math.max(
+      1,
+      Math.floor(selectedDuration / Math.max(perClip, 0.1)),
+    );
+    const count = Math.min(Math.max(2, Math.round(clipCount)), maxDistinctClips);
+    const step = count > 1 ? (selectedDuration - perClip) / (count - 1) : 0;
+    const batchStamp = Date.now();
 
-    for (let i = 0; i < clipCount; i++) {
-      const start = trimStart + step * i;
-      const end = start + clipDuration;
+    for (let index = 0; index < count; index += 1) {
+      const start = range.start + step * index;
+      const clipRange = clampRange(
+        { start, end: start + perClip },
+        video.duration,
+      );
 
-      const job: ProcessingJob = {
-        id: uuidv4(),
-        videoId: video.id,
-        status: "pending",
-        progress: 0,
-        settings: { ...settings },
-        outputFileName: `${video.file.name.split(".")[0]}_clip${
-          i + 1
-        }_${Date.now()}.gif`,
-        trimRange: { start, end },
-      };
-      addJob(job);
+      addJob(
+        createJob({
+          outputFileName: `${video.file.name.split(".")[0]}_clip${index + 1}_${batchStamp}.gif`,
+          trimRange: clipRange,
+          duration: perClip,
+        }),
+      );
     }
-    toast.success(`Added ${clipCount} clips to queue`);
+
+    toast.success(`Added ${count} clip${count > 1 ? "s" : ""} to the queue`);
   };
 
-  if (!video) return null;
+  const perClip = Math.min(clipDuration, selectedDuration);
+  const maxDistinctClips = Math.max(
+    1,
+    Math.floor(selectedDuration / Math.max(perClip, 0.1)),
+  );
+  const effectiveClipCount = Math.min(
+    Math.max(2, Math.round(clipCount)),
+    maxDistinctClips,
+  );
+
+  const estimatedBytes = estimateGifBytes(
+    mode === "clips" ? clipDuration : selectedDuration,
+    outputWidth,
+    settings.fps,
+    settings.quality,
+  );
 
   return (
-    <div className="bg-card border rounded-2xl shadow-sm p-4 space-y-6 h-fit">
-      {/* Mode Switcher */}
-      <div className="grid grid-cols-2 rounded-xl bg-muted p-1 gap-1">
-        <button
-          onClick={() => setMode("simple")}
-          className={cn(
-            "flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all",
-            mode === "simple"
-              ? "bg-background shadow text-primary"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Film className="w-4 h-4" />
-          Single
-        </button>
-
-        <button
-          onClick={() => setMode("clips")}
-          className={cn(
-            "flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all",
-            mode === "clips"
-              ? "bg-background shadow text-primary"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Grid className="w-4 h-4" />
-          Batch
-        </button>
+    <div className="space-y-6 rounded-2xl border bg-card p-4 shadow-sm">
+      <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+        {(
+          [
+            { value: "simple", label: "Single", icon: Film },
+            { value: "clips", label: "Batch", icon: Grid },
+          ] as const
+        ).map(({ value, label, icon: Icon }) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={mode === value}
+            onClick={() => setMode(value)}
+            className={cn(
+              "flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-colors",
+              mode === value
+                ? "bg-background text-primary shadow"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Settings className="w-5 h-5 text-primary shrink-0" />
-          <h3 className="font-semibold text-base">Output Settings</h3>
-        </div>
+      <div className="flex items-center gap-2">
+        <Settings className="h-5 w-5 shrink-0 text-primary" />
+        <h3 className="font-semibold">Output settings</h3>
       </div>
 
-      {/* Settings */}
       <div className="space-y-6">
-        {/* Clip Controls */}
         {mode === "clips" && (
-          <div className="rounded-xl border bg-muted/40 p-4 space-y-5">
-            {/* Logic: Total Duration available */}
-            {(() => {
-              const trimStart = video.trim.start;
-              const trimEnd = video.trim.end;
-              const totalDuration = trimEnd - trimStart;
+          <div className="space-y-5 rounded-xl border bg-muted/40 p-4">
+            <div className="space-y-3">
+              <label className="flex justify-between text-sm font-medium">
+                <span>Clips</span>
+                <span className="text-primary">{clipCount}</span>
+              </label>
+              <Slider
+                min={2}
+                max={20}
+                step={1}
+                value={[clipCount]}
+                onValueChange={(value) => setClipCount(value[0])}
+                className="py-1"
+              />
+            </div>
 
-              // Calculate step for info
-              const step =
-                clipCount > 1
-                  ? (totalDuration - clipDuration) / (clipCount - 1)
-                  : 0;
+            <div className="space-y-3">
+              <label className="flex justify-between text-sm font-medium">
+                <span>Duration per clip</span>
+                <span className="text-primary">{formatTime(clipDuration)}</span>
+              </label>
+              <Slider
+                min={0.5}
+                max={Math.max(0.5, Math.min(selectedDuration, 10))}
+                step={0.5}
+                value={[Math.min(clipDuration, Math.max(0.5, selectedDuration))]}
+                onValueChange={(value) =>
+                  setClipDuration(Math.min(value[0], selectedDuration))
+                }
+                className="py-1"
+              />
+              <div className="flex justify-between px-1 text-[10px] text-muted-foreground">
+                <span>0.5s</span>
+                <span>Max: {formatTime(Math.min(selectedDuration, 10))}</span>
+              </div>
+            </div>
 
-              return (
-                <>
-                  <div className="space-y-3">
-                    <label className="flex justify-between text-sm font-medium">
-                      <span>Clips</span>
-                      <span className="text-primary">{clipCount}</span>
-                    </label>
-                    <Slider
-                      min={2}
-                      max={20}
-                      step={1}
-                      value={[clipCount]}
-                      onValueChange={(val) => setClipCount(val[0])}
-                      className="py-1"
-                    />
-                  </div>
-
-                  <div className="space-y-3">
-                    <label className="flex justify-between text-sm font-medium">
-                      <span>Duration per Clip</span>
-                      <span className="text-primary">
-                        {formatTime(clipDuration)}
-                      </span>
-                    </label>
-                    <Slider
-                      min={0.5}
-                      max={Math.min(totalDuration, 10)} // Cap at 10s or total video length
-                      step={0.5}
-                      value={[clipDuration]}
-                      onValueChange={(val) => {
-                        const newDuration = Math.min(val[0], totalDuration);
-                        setClipDuration(newDuration);
-                      }}
-                      className="py-1"
-                    />
-                    <div className="flex justify-between text-[10px] text-muted-foreground px-1">
-                      <span>0.5s</span>
-                      <span>
-                        Max: {formatTime(Math.min(totalDuration, 10))}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg bg-background p-3 text-xs text-muted-foreground space-y-1 border">
-                    <p>
-                      Generating{" "}
-                      <span className="font-semibold text-foreground">
-                        {clipCount} clips
-                      </span>{" "}
-                      of{" "}
-                      <span className="font-semibold text-foreground">
-                        {clipDuration}s
-                      </span>{" "}
-                      each.
-                    </p>
-                    <p>
-                      Spaced every{" "}
-                      <span className="font-semibold text-foreground">
-                        {step.toFixed(1)}s
-                      </span>{" "}
-                      across {formatTime(totalDuration)}.
-                    </p>
-                  </div>
-                </>
-              );
-            })()}
+            <p className="rounded-lg border bg-background p-3 text-xs text-muted-foreground">
+              {effectiveClipCount} clip
+              {effectiveClipCount > 1 ? "s" : ""} of{" "}
+              {Math.min(clipDuration, selectedDuration).toFixed(1)}s across{" "}
+              {formatTime(selectedDuration)}.
+              {effectiveClipCount < clipCount
+                ? " Fewer clips fit in this selection."
+                : ""}
+            </p>
           </div>
         )}
 
-        {/* Resolution */}
         <div className="space-y-2">
-          <Label htmlFor="resolution" className="text-sm">
-            Resolution
-          </Label>
+          <Label htmlFor="resolution">Resolution</Label>
           <Select
-            defaultValue="720"
-            onValueChange={(e) =>
-              setSettings({ ...settings, width: Number(e) })
+            value={String(settings.width)}
+            onValueChange={(value) =>
+              setSettings({
+                ...settings,
+                width: value === "auto" ? "auto" : Number(value),
+              })
             }
           >
-            <SelectTrigger id="resolution" className="w-full h-11">
+            <SelectTrigger id="resolution" className="h-10 w-full md:h-8">
               <SelectValue placeholder="Select resolution" />
             </SelectTrigger>
             <SelectContent>
-              {RESOLUTIONS.map((w) => (
-                <SelectItem key={w} value={w.toString()}>
-                  {w}px
+              <SelectItem value="auto">
+                Original ({video.width}px)
+              </SelectItem>
+              {RESOLUTIONS.map((width) => (
+                <SelectItem key={width} value={width.toString()}>
+                  {width}px
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
 
-        {/* FPS */}
         <div className="space-y-2">
-          <Label className="flex justify-between items-center text-sm">
-            <span>Frame Rate (FPS)</span>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={1}
-                max={60}
-                value={settings.fps}
-                onChange={(e) => {
-                  let val = Number(e.target.value);
-                  if (val > 60) val = 60;
-                  setSettings({ ...settings, fps: val });
-                }}
-                className="h-8 w-16 text-center p-1"
-              />
-            </div>
+          <Label className="flex items-center justify-between text-sm">
+            <span>Frame rate</span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={60}
+              value={settings.fps}
+              aria-label="Frames per second"
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                setSettings({
+                  ...settings,
+                  fps: Number.isFinite(value)
+                    ? Math.min(60, Math.max(1, Math.round(value)))
+                    : 15,
+                });
+              }}
+              className="h-9 w-20 text-center md:h-8 md:w-16"
+            />
           </Label>
           <Slider
             step={1}
-            min={15}
+            min={1}
             max={60}
             value={[settings.fps]}
             onValueChange={(value) =>
-              setSettings({
-                ...settings,
-                fps: Number(value[0]),
-              })
+              setSettings({ ...settings, fps: Number(value[0]) })
             }
             className="py-2"
           />
         </div>
       </div>
 
-      {/* CTA */}
-      <div className="pt-4 space-y-2">
+      <div className="space-y-2 pt-2">
         <Button
           size="lg"
-          className="w-full h-12 text-base"
-          onClick={mode === "simple" ? handleGenerate : generateBatch}
+          className="h-11 w-full text-sm"
+          onClick={mode === "simple" ? handleGenerate : handleGenerateBatch}
+          disabled={tooShort}
         >
-          {mode === "simple" ? "Create GIF" : `Create ${clipCount} GIFs`}
+          {mode === "simple"
+            ? "Create GIF"
+            : `Create ${effectiveClipCount} GIF${effectiveClipCount > 1 ? "s" : ""}`}
         </Button>
 
-        <p className="text-xs text-center text-muted-foreground">
-          Est. size ~{(video.duration * settings.fps * 0.05).toFixed(1)} MB
+        <p className="text-center text-xs text-muted-foreground">
+          {tooShort
+            ? "Select at least 0.1s of video to continue."
+            : `${selectedDuration.toFixed(1)}s · ~${(estimatedBytes / (1024 * 1024)).toFixed(1)} MB estimated`}
         </p>
       </div>
 
-      {/* Jobs */}
       <JobList />
     </div>
   );
