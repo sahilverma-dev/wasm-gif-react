@@ -30,7 +30,9 @@ export const useLogStore = create<LogState>((set, get) => ({
     };
 
     set((state) => ({
-      logs: [newLog, ...state.logs].slice(0, 1000), // Keep last 1000 logs
+      // Append so the newest entry sits at the bottom, matching the panel's
+      // auto-scroll behaviour. Keep the most recent 1000 lines.
+      logs: [...state.logs, newLog].slice(-1000),
     }));
   },
 
