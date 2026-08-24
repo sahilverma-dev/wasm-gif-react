@@ -120,10 +120,47 @@
   * {
     @apply border-border outline-ring/50;
     }
-  body {
-    @apply font-sans bg-background text-foreground;
-    }
   html {
     @apply font-sans;
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
     }
+  .dark {
+    color-scheme: dark;
+    }
+  body {
+    @apply font-sans bg-background text-foreground;
+    min-height: 100dvh;
+    }
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+    }
+  button,
+  [role="button"] {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    }
+  /* iOS zooms the page when a form control is focused below 16px. */
+  @media (pointer: coarse) {
+    input,
+    textarea,
+    select {
+      font-size: 16px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }

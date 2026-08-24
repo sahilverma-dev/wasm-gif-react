@@ -3,41 +3,87 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo.png" />
-    <meta
-      name="description"
-      content="Private, client-side video to GIF conversion using FFmpeg WASM. No uploads, no limits."
-    />
+    <link rel="apple-touch-icon" href="/logo.png" />
+
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <meta name="theme-color" content="#E42222" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#171717" />
+    <meta name="application-name" content="GIF.WASM" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <title>GIF.WASM — Private Video to GIF Converter</title>
+    <meta
+      name="description"
+      content="Convert videos to GIFs entirely in your browser with FFmpeg WebAssembly. No uploads, no accounts, no watermarks. Trim, pick a frame rate and download in seconds."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://wasm-gif-react.vercel.app/" />
+
+    <!-- The FFmpeg core is fetched from a CDN on first use. -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+    <link rel="preconnect" href="https://unpkg.com" crossorigin />
+    <link rel="dns-prefetch" href="https://unpkg.com" />
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="GIF.WASM" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="https://wasm-gif-react.vercel.app/" />
-    <meta property="og:title" content="WASM GIF Converter" />
+    <meta property="og:title" content="GIF.WASM — Private Video to GIF Converter" />
     <meta
       property="og:description"
-      content="Private, client-side video to GIF conversion using FFmpeg WASM. No uploads, no limits."
+      content="Convert videos to GIFs entirely in your browser. No uploads, no accounts, no watermarks."
     />
-    <meta property="og:image" content="/open-graph-image.png" />
+    <meta
+      property="og:image"
+      content="https://wasm-gif-react.vercel.app/open-graph-image.png"
+    />
+    <meta property="og:image:alt" content="GIF.WASM video to GIF converter" />
 
     <!-- Twitter -->
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:url" content="https://wasm-gif-react.vercel.app/" />
-    <meta property="twitter:title" content="WASM GIF Converter" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://wasm-gif-react.vercel.app/" />
+    <meta name="twitter:title" content="GIF.WASM — Private Video to GIF Converter" />
     <meta
-      property="twitter:description"
-      content="Private, client-side video to GIF conversion using FFmpeg WASM. No uploads, no limits."
+      name="twitter:description"
+      content="Convert videos to GIFs entirely in your browser. No uploads, no accounts, no watermarks."
     />
-    <meta property="twitter:image" content="/open-graph-image.png" />
+    <meta
+      name="twitter:image"
+      content="https://wasm-gif-react.vercel.app/open-graph-image.png"
+    />
+    <meta name="twitter:image:alt" content="GIF.WASM video to GIF converter" />
 
-    <link rel="apple-touch-icon" href="/logo.png" />
-    <title>WASM GIF Converter</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "GIF.WASM",
+        "url": "https://wasm-gif-react.vercel.app/",
+        "description": "A private, client-side video to GIF converter powered by FFmpeg WebAssembly.",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "Any",
+        "browserRequirements": "Requires WebAssembly and SharedArrayBuffer support",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      This converter runs entirely in your browser and needs JavaScript and
+      WebAssembly enabled.
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

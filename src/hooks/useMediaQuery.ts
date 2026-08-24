@@ -1,35 +1,21 @@
-import { useState, useEffect } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 export function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(() => {
-    // Check purely for server-side rendering safety, though this is client-side app
-    if (typeof window !== "undefined") {
-      return window.matchMedia(query).matches;
-    }
-    return false;
-  });
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (typeof window === "undefined") return () => {};
 
-  useEffect(() => {
-    // Ensure window is defined before accessing matchMedia
-    if (typeof window === "undefined") {
-      return;
-    }
+      const media = window.matchMedia(query);
+      media.addEventListener("change", onStoreChange);
+      return () => media.removeEventListener("change", onStoreChange);
+    },
+    [query],
+  );
 
-    const media = window.matchMedia(query);
+  const getSnapshot = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(query).matches;
+  }, [query]);
 
-    // Update state if the initial match status is different from the current state
-    // This handles cases where the query might change or the component mounts
-    // and the initial state set by useState's lazy initializer is outdated
-    // before the listener has a chance to fire.
-    if (media.matches !== matches) {
-      setMatches(media.matches);
-    }
-
-    const listener = (event: MediaQueryListEvent) => setMatches(event.matches);
-    media.addEventListener("change", listener);
-
-    return () => media.removeEventListener("change", listener);
-  }, [query]); // Only re-run effect if the query changes
-
-  return matches;
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
 }
