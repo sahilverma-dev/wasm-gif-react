@@ -18,6 +18,9 @@ const CORE_CDNS = [
 let ffmpeg: FFmpeg | null = null;
 let loadPromise: Promise<void> | null = null;
 let activeJobId: string | null = null;
+// Progress is reported per pass; these map it onto one 0-99 job bar.
+let progressOffset = 0;
+let progressScale = 1;
 
 // Handle messages from the main thread. Jobs are serialized: the main thread
 // can post the next job the moment DONE arrives, and without this queue that
@@ -103,7 +106,8 @@ async function loadCore(): Promise<void> {
 
     instance.on("progress", ({ progress }) => {
       if (!activeJobId) return;
-      const percent = Math.max(0, Math.min(99, Math.round(progress * 100)));
+      const overall = progressOffset + progress * progressScale;
+      const percent = Math.max(0, Math.min(99, Math.round(overall * 100)));
       post({ type: "PROGRESS", jobId: activeJobId, payload: percent });
     });
 
@@ -153,11 +157,43 @@ async function transcodeVideo(job: TranscodePayload): Promise<void> {
     return;
   }
 
-  const { jobId, file, inputName, outputName, args } = job;
+  const { jobId, file, inputName, outputName, args, palette } = job;
   activeJobId = jobId;
 
   try {
     await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    if (palette) {
+      // Two-pass palette: the first pass only accumulates colour statistics,
+      // so memory stays bounded. The old single-pass split buffered every
+      // decoded frame until the palette was ready and OOMed on long clips.
+      progressOffset = 0;
+      progressScale = 0.4;
+
+      post({ type: "LOG", payload: "Pass 1/2: building the colour palette…" });
+      const paletteExitCode = await ffmpeg.exec(palette.args);
+      if (paletteExitCode !== 0) {
+        throw new Error(
+          `Palette generation failed with code ${paletteExitCode}.`,
+        );
+      }
+
+      const paletteData = await ffmpeg.readFile(palette.outputName);
+      const paletteSize =
+        typeof paletteData === "string"
+          ? paletteData.length
+          : paletteData.byteLength;
+      if (paletteSize === 0) {
+        throw new Error("Palette generation produced an empty image.");
+      }
+
+      progressOffset = 0.4;
+      progressScale = 0.6;
+      post({ type: "LOG", payload: "Pass 2/2: encoding the GIF…" });
+    } else {
+      progressOffset = 0;
+      progressScale = 1;
+    }
 
     const exitCode = await ffmpeg.exec(args);
     if (exitCode !== 0) {
@@ -181,9 +217,14 @@ async function transcodeVideo(job: TranscodePayload): Promise<void> {
     });
   } finally {
     activeJobId = null;
+    progressOffset = 0;
+    progressScale = 1;
 
     // Always clear the virtual filesystem, even when encoding failed.
-    for (const name of [inputName, outputName]) {
+    const createdFiles = [inputName, outputName];
+    if (palette) createdFiles.push(palette.outputName);
+
+    for (const name of createdFiles) {
       try {
         await ffmpeg.deleteFile(name);
       } catch {

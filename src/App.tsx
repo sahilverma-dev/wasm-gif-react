@@ -31,7 +31,7 @@ function App() {
   const isProcessing = useJobStore((state) => state.isProcessing);
   const hasVideos = useVideoStore((state) => state.videos.length > 0);
   const activeVideoId = useVideoStore((state) => state.activeVideoId);
-  const { workerError, isWorkerLoaded, handleCancelJob } = useJobProcessor();
+  const { workerError, hasLoadedOnce, handleCancelJob } = useJobProcessor();
 
   const isDesktop = useMediaQuery("(min-width: 768px)");
   useThemeColor();
@@ -82,7 +82,7 @@ function App() {
             Video to GIF converter that runs entirely in your browser
           </h1>
 
-          {!isWorkerLoaded && (
+          {!hasLoadedOnce && (
             <div
               role="status"
               aria-live="polite"

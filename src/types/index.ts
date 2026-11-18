@@ -65,6 +65,11 @@ export interface TranscodePayload {
   inputName: string;
   outputName: string;
   args: string[];
+  /** Optional first pass that writes a palette image for the second pass. */
+  palette?: {
+    args: string[];
+    outputName: string;
+  };
 }
 
 export type WorkerMessage =

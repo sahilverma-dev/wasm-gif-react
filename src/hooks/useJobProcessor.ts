@@ -15,11 +15,27 @@ import type {
 const STALE_JOB_TIMEOUT_MS = 120_000; // no progress for 2 minutes = stale
 const WATCHDOG_INTERVAL_MS = 15_000;
 
+// A single-pass palette buffers the whole decoded clip in memory. Above this
+// budget we use a two-pass palette instead (slower, bounded memory).
+const TWO_PASS_THRESHOLD_BYTES = 192 * 1024 * 1024;
+
+// FFmpeg.wasm leaves the whole runtime unusable after these errors, so the
+// job must be retried on a fresh worker instead of the same instance.
+const RUNTIME_CRASH =
+  /aborted|oom|out of memory|runtimeerror|memory access|exited with code -1/i;
+
 const SAFE_RETRY_SETTINGS = {
   width: 480,
-  fps: 15,
+  fps: 12,
   quality: "medium" as GifQuality,
 };
+
+function describeFailure(message: string): string {
+  if (RUNTIME_CRASH.test(message)) {
+    return "The encoder ran out of memory. Try a smaller resolution, a lower frame rate, or a shorter selection.";
+  }
+  return message;
+}
 
 function sanitizeFileName(name: string): string {
   const base = name.replace(/\.[^.]+$/, "").replace(/[^\w.-]+/g, "_");
@@ -35,13 +51,17 @@ function clampFps(value: number): number {
 export function useJobProcessor() {
   const setIsProcessing = useJobStore((state) => state.setProcessing);
   const [isWorkerLoaded, setIsWorkerLoaded] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [workerError, setWorkerError] = useState<string | null>(null);
 
   const workerRef = useRef<Worker | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
+  const activeJobNeedsRestartRef = useRef(false);
+  const restartingRef = useRef(false);
   const activeToastId = useRef<string | number | null>(null);
   const lastProgressTime = useRef<number>(0);
   const workerGeneration = useRef(0);
+  const [workerRestarts, setWorkerRestarts] = useState(0);
 
   const addLog = useLogStore((state) => state.addLog);
 
@@ -65,6 +85,7 @@ export function useJobProcessor() {
     (message: string) => {
       setWorkerError(message);
       setIsWorkerLoaded(false);
+      restartingRef.current = false;
       clearActiveToast();
     },
     [clearActiveToast],
@@ -77,6 +98,8 @@ export function useJobProcessor() {
       switch (message.type) {
         case "LOADED":
           setIsWorkerLoaded(true);
+          setHasLoadedOnce(true);
+          restartingRef.current = false;
           setWorkerError(null);
           addLog("FFmpeg loaded", "info");
           break;
@@ -110,6 +133,9 @@ export function useJobProcessor() {
           activeJobIdRef.current = null;
           lastProgressTime.current = 0;
 
+          const needsRestart = activeJobNeedsRestartRef.current;
+          activeJobNeedsRestartRef.current = false;
+
           const { blob, outputName } = message.payload;
           const { jobs, completeJob } = useJobStore.getState();
           const job = jobs.find((entry) => entry.id === message.jobId);
@@ -121,6 +147,15 @@ export function useJobProcessor() {
               formatBytes(blob.size),
             );
             addLog(`Job completed: ${outputName}`, "info");
+          }
+
+          // A two-pass job leaves this wasm build's runtime in a state where
+          // the next exec hangs, so the encoder is recycled before the queue
+          // moves on.
+          if (needsRestart) {
+            restartingRef.current = true;
+            setIsWorkerLoaded(false);
+            setWorkerRestarts((count) => count + 1);
           }
 
           if (activeToastId.current) {
@@ -150,15 +185,25 @@ export function useJobProcessor() {
 
           addLog(`Error: ${message.payload}`, "error");
 
+          const crashed = RUNTIME_CRASH.test(message.payload);
+          const needsRestart = activeJobNeedsRestartRef.current;
+          activeJobNeedsRestartRef.current = false;
+          const shouldRestart = crashed || needsRestart;
+          const reason = describeFailure(message.payload);
           const attempt = job.attempt || 1;
           if (attempt < 2) {
             addLog(
               `Job failed (attempt ${attempt}). Retrying with safer settings.`,
               "info",
             );
-            retryJob(job.id, SAFE_RETRY_SETTINGS, message.payload);
+            retryJob(job.id, SAFE_RETRY_SETTINGS, reason);
             activeJobIdRef.current = null;
             lastProgressTime.current = 0;
+            if (shouldRestart) {
+              restartingRef.current = true;
+              setIsWorkerLoaded(false);
+              setWorkerRestarts((count) => count + 1);
+            }
             if (!activeToastId.current) {
               activeToastId.current = toast.loading(
                 `Retrying... (attempt ${attempt + 1})`,
@@ -173,16 +218,21 @@ export function useJobProcessor() {
 
           activeJobIdRef.current = null;
           lastProgressTime.current = 0;
-          failJob(job.id, message.payload);
+          failJob(job.id, reason);
+          if (shouldRestart) {
+            restartingRef.current = true;
+            setIsWorkerLoaded(false);
+            setWorkerRestarts((count) => count + 1);
+          }
           if (activeToastId.current) {
             // Replace the loading toast in place so the error is not dismissed
             // by the same id in the next line.
-            toast.error(`Failed: ${message.payload}`, {
+            toast.error(`Failed: ${reason}`, {
               id: activeToastId.current,
             });
             activeToastId.current = null;
           } else {
-            toast.error(`Failed: ${message.payload}`);
+            toast.error(`Failed: ${reason}`);
           }
           break;
         }
@@ -198,6 +248,8 @@ export function useJobProcessor() {
     workerRef.current?.terminate();
     workerRef.current = null;
     activeJobIdRef.current = null;
+    activeJobNeedsRestartRef.current = false;
+    restartingRef.current = true;
     lastProgressTime.current = 0;
 
     const worker = new Worker(
@@ -215,11 +267,48 @@ export function useJobProcessor() {
       if (generation !== workerGeneration.current) return;
       const detail = event.message || "The video processor failed to start.";
       addLog(`Worker error: ${detail}`, "error");
+
+      // A crash while a job is running is recoverable: retry it on a fresh
+      // worker. A crash with no active job usually means the engine itself
+      // could not start, so show the fatal screen instead.
+      const activeId = activeJobIdRef.current;
+      const { jobs, retryJob, failJob } = useJobStore.getState();
+      const job = activeId
+        ? jobs.find((entry) => entry.id === activeId)
+        : undefined;
+
+      if (job) {
+        const reason = "The encoder crashed while processing this job.";
+        activeJobIdRef.current = null;
+        lastProgressTime.current = 0;
+        if ((job.attempt || 1) < 2) {
+          retryJob(job.id, SAFE_RETRY_SETTINGS, reason);
+        } else {
+          failJob(job.id, reason);
+        }
+        clearActiveToast();
+        setIsWorkerLoaded(false);
+        setWorkerRestarts((count) => count + 1);
+        return;
+      }
+
       markWorkerFailed(detail);
     };
 
     worker.postMessage({ type: "LOAD" } satisfies WorkerMessage);
-  }, [addLog, handleWorkerMessage, markWorkerFailed]);
+  }, [
+    addLog,
+    clearActiveToast,
+    handleWorkerMessage,
+    markWorkerFailed,
+  ]);
+
+  // Restart the encoder after a wasm crash. Reusing a crashed instance makes
+  // every later exec hang with no progress.
+  useEffect(() => {
+    if (workerRestarts === 0) return;
+    createWorker();
+  }, [workerRestarts, createWorker]);
 
   // Boot the worker once and tear it down with the app.
   useEffect(() => {
@@ -260,8 +349,10 @@ export function useJobProcessor() {
 
       failJob(job.id, "Timed out: the encoder stopped responding.");
       activeJobIdRef.current = null;
+      activeJobNeedsRestartRef.current = false;
       lastProgressTime.current = 0;
       clearActiveToast();
+      restartingRef.current = true;
       setIsWorkerLoaded(false);
       createWorker();
       toast.error("Job timed out");
@@ -282,9 +373,11 @@ export function useJobProcessor() {
         // ffmpeg.exec() cannot be interrupted, so kill the worker and let the
         // queue restart from a clean instance.
         activeJobIdRef.current = null;
+        activeJobNeedsRestartRef.current = false;
         lastProgressTime.current = 0;
         addLog("Cancelled the active job; restarting the encoder.", "info");
         clearActiveToast();
+        restartingRef.current = true;
         setIsWorkerLoaded(false);
         createWorker();
       }
@@ -296,7 +389,7 @@ export function useJobProcessor() {
 
   // Queue runner: starts at most one job at a time.
   useEffect(() => {
-    if (!isWorkerLoaded) return;
+    if (!isWorkerLoaded || restartingRef.current) return;
 
     const { jobs, startJob, failJob, setProcessing } = useJobStore.getState();
 
@@ -368,35 +461,90 @@ export function useJobProcessor() {
           ? "bayer:bayer_scale=3"
           : "bayer:bayer_scale=5";
 
-    const paletteOptions =
-      quality === "high" ? "palettegen=stats_mode=diff" : "palettegen";
-
-    const filterComplex = [
-      `fps=${fps}`,
-      `scale=${targetWidth}:-2:flags=lanczos`,
-      `split[s0][s1];[s0]${paletteOptions}[p];[s1][p]paletteuse=dither=${dither}`,
-    ].join(",");
+    const paletteStats = quality === "high" ? "=stats_mode=diff" : "";
 
     const extension = video.file.name.split(".").pop()?.toLowerCase() || "mp4";
     const inputName = `input.${extension.replace(/[^\w]/g, "") || "mp4"}`;
     const outputName = sanitizeFileName(pendingJob.outputFileName);
+    const paletteName = "palette.bmp";
 
-    const args = [
+    const targetHeight = Math.max(
+      2,
+      Math.round((targetWidth * video.height) / video.width / 2) * 2,
+    );
+    const frameCount = Math.ceil(
+      (trimRange.end - trimRange.start) * fps,
+    );
+    // A roughly 4-bytes-per-pixel frame buffer. Single-pass palette encoding
+    // keeps every frame until palettegen finishes, so large clips must use the
+    // two-pass path to stay inside the wasm heap.
+    const bufferedBytes = frameCount * targetWidth * targetHeight * 4;
+    const useTwoPass = bufferedBytes > TWO_PASS_THRESHOLD_BYTES;
+    activeJobNeedsRestartRef.current = useTwoPass;
+
+    if (useTwoPass) {
+      addLog(
+        `Large clip (${Math.round(bufferedBytes / (1024 * 1024))} MB frame buffer): using low-memory two-pass palette encoding.`,
+        "info",
+      );
+    }
+
+    const seekArgs = [
+      "-y",
       "-ss",
       trimRange.start.toFixed(3),
       "-t",
       (trimRange.end - trimRange.start).toFixed(3),
+    ];
+
+    // Pass 1 only accumulates colour statistics, which keeps memory bounded.
+    // Do not cap frames here: palettegen emits its single frame at EOF, and
+    // stopping the muxer early deadlocks the wasm pipeline. BMP avoids a
+    // PNG-muxer deadlock in this ffmpeg.wasm build.
+    const paletteArgs = [
+      ...seekArgs,
       "-i",
       inputName,
       "-an",
-      "-filter_complex",
-      filterComplex,
-      "-loop",
-      "0",
-      "-f",
-      "gif",
-      outputName,
+      "-vf",
+      `fps=${fps},scale=${targetWidth}:-2:flags=lanczos,palettegen${paletteStats}`,
+      paletteName,
     ];
+
+    // Pass 2 streams the palette over the clip instead of buffering every
+    // decoded frame.
+    const twoPassFilter = `[0:v]fps=${fps},scale=${targetWidth}:-2:flags=lanczos[x];[x][1:v]paletteuse=dither=${dither}:diff_mode=rectangle`;
+    const singlePassFilter = `fps=${fps},scale=${targetWidth}:-2:flags=lanczos,split[s0][s1];[s0]palettegen${paletteStats}[p];[s1][p]paletteuse=dither=${dither}`;
+
+    const args = useTwoPass
+      ? [
+          ...seekArgs,
+          "-i",
+          inputName,
+          "-i",
+          paletteName,
+          "-an",
+          "-filter_complex",
+          twoPassFilter,
+          "-loop",
+          "0",
+          "-f",
+          "gif",
+          outputName,
+        ]
+      : [
+          ...seekArgs,
+          "-i",
+          inputName,
+          "-an",
+          "-filter_complex",
+          singlePassFilter,
+          "-loop",
+          "0",
+          "-f",
+          "gif",
+          outputName,
+        ];
 
     startJob(pendingJob.id);
     setProcessing(true);
@@ -413,11 +561,18 @@ export function useJobProcessor() {
       inputName,
       outputName,
       args,
+      palette: useTwoPass
+        ? {
+            args: paletteArgs,
+            outputName: paletteName,
+          }
+        : undefined,
     };
 
     const worker = workerRef.current;
     if (!worker) {
       activeJobIdRef.current = null;
+      activeJobNeedsRestartRef.current = false;
       lastProgressTime.current = 0;
       failJob(pendingJob.id, "The video engine is not available. Reload the page.");
       setProcessing(false);
@@ -437,5 +592,5 @@ export function useJobProcessor() {
     }
   }, [workerError, setIsProcessing]);
 
-  return { workerError, isWorkerLoaded, handleCancelJob };
+  return { workerError, isWorkerLoaded, hasLoadedOnce, handleCancelJob };
 }

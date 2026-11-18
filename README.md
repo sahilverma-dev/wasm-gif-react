@@ -84,8 +84,9 @@ Without these headers the app shows a clear error instead of failing silently. I
 1. A dropped file is inspected locally with a temporary `<video>` element to read duration, dimensions and a poster frame.
 2. The file, trim range and settings are turned into an FFmpeg argument list.
 3. The main thread posts one job at a time to `src/workers/ffmpeg.worker.ts`.
-4. The worker writes the file into FFmpeg's in-memory filesystem, builds a palette (`palettegen` + `paletteuse`) and returns a GIF blob.
-5. Blob URLs are revoked when a video, job or result is removed, so long sessions don't leak memory.
+4. The worker writes the file into FFmpeg's in-memory filesystem. Small selections use the faster single-pass palette (`palettegen` + `paletteuse`); large selections use a two-pass palette so decoded frames are not buffered in the wasm heap, which is what caused out-of-memory crashes on long 720p clips.
+5. The worker is recycled between two-pass jobs because this ffmpeg.wasm build cannot safely run another job on the same instance afterwards.
+6. GIF blobs are returned to the main thread. Blob URLs are revoked when a video, job or result is removed, so long sessions don't leak memory.
 
 ## Project structure
 
