@@ -16,19 +16,38 @@ const STALE_JOB_TIMEOUT_MS = 120_000; // no progress for 2 minutes = stale
 const WATCHDOG_INTERVAL_MS = 15_000;
 
 // A single-pass palette buffers the whole decoded clip in memory. Above this
-// budget we use a two-pass palette instead (slower, bounded memory).
-const TWO_PASS_THRESHOLD_BYTES = 192 * 1024 * 1024;
+// budget we use a two-pass palette instead (slower, bounded memory). Phones and
+// low-memory devices get a tighter budget.
+function getFrameBufferBudget(): number {
+  if (typeof window === "undefined") return 192 * 1024 * 1024;
+
+  const coarsePointer =
+    window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  const deviceMemory = (
+    navigator as Navigator & { deviceMemory?: number }
+  ).deviceMemory;
+  const lowMemory = coarsePointer || (deviceMemory ?? 8) <= 4;
+
+  return (lowMemory ? 128 : 192) * 1024 * 1024;
+}
+
+const TWO_PASS_THRESHOLD_BYTES = getFrameBufferBudget();
 
 // FFmpeg.wasm leaves the whole runtime unusable after these errors, so the
 // job must be retried on a fresh worker instead of the same instance.
 const RUNTIME_CRASH =
   /aborted|oom|out of memory|runtimeerror|memory access|exited with code -1/i;
 
-const SAFE_RETRY_SETTINGS = {
-  width: 480,
-  fps: 12,
-  quality: "medium" as GifQuality,
-};
+// Each retry is materially lighter than the last. A job only gives up after
+// every rung has been tried on a fresh encoder.
+const RETRY_LADDER: Array<{
+  width: number;
+  fps: number;
+  quality: GifQuality;
+}> = [
+  { width: 480, fps: 12, quality: "medium" },
+  { width: 360, fps: 10, quality: "low" },
+];
 
 function describeFailure(message: string): string {
   if (RUNTIME_CRASH.test(message)) {
@@ -191,12 +210,13 @@ export function useJobProcessor() {
           const shouldRestart = crashed || needsRestart;
           const reason = describeFailure(message.payload);
           const attempt = job.attempt || 1;
-          if (attempt < 2) {
+          const retrySettings = RETRY_LADDER[attempt - 1];
+          if (retrySettings) {
             addLog(
-              `Job failed (attempt ${attempt}). Retrying with safer settings.`,
+              `Job failed (attempt ${attempt}). Retrying at ${retrySettings.width}px / ${retrySettings.fps}fps.`,
               "info",
             );
-            retryJob(job.id, SAFE_RETRY_SETTINGS, reason);
+            retryJob(job.id, retrySettings, reason);
             activeJobIdRef.current = null;
             lastProgressTime.current = 0;
             if (shouldRestart) {
@@ -279,10 +299,12 @@ export function useJobProcessor() {
 
       if (job) {
         const reason = "The encoder crashed while processing this job.";
+        const attempt = job.attempt || 1;
+        const retrySettings = RETRY_LADDER[attempt - 1];
         activeJobIdRef.current = null;
         lastProgressTime.current = 0;
-        if ((job.attempt || 1) < 2) {
-          retryJob(job.id, SAFE_RETRY_SETTINGS, reason);
+        if (retrySettings) {
+          retryJob(job.id, retrySettings, reason);
         } else {
           failJob(job.id, reason);
         }
