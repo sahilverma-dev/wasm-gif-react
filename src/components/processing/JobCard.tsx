@@ -3,10 +3,12 @@ import {
   AlertTriangle,
   Ban,
   Check,
+  Cpu,
   Download,
   ExternalLink,
   FileVideo,
   Film,
+  Globe,
   Loader2,
   RotateCcw,
   ShieldAlert,
@@ -135,6 +137,11 @@ export function JobCard({
               </Badge>
               <Badge icon={Film}>{job.fps || job.settings.fps} FPS</Badge>
               {job.size && <Badge icon={FileVideo}>{job.size}</Badge>}
+              <Badge
+                icon={job.settings.engine === "ffmpeg" ? Cpu : Globe}
+              >
+                {job.settings.engine === "ffmpeg" ? "FFmpeg" : "Browser"}
+              </Badge>
             </div>
           )}
 

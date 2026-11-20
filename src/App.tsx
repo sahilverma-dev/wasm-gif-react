@@ -31,7 +31,7 @@ function App() {
   const isProcessing = useJobStore((state) => state.isProcessing);
   const hasVideos = useVideoStore((state) => state.videos.length > 0);
   const activeVideoId = useVideoStore((state) => state.activeVideoId);
-  const { workerError, hasLoadedOnce, handleCancelJob } = useJobProcessor();
+  const { workerError, isEngineLoading, handleCancelJob } = useJobProcessor();
 
   const isDesktop = useMediaQuery("(min-width: 768px)");
   useThemeColor();
@@ -82,7 +82,7 @@ function App() {
             Video to GIF converter that runs entirely in your browser
           </h1>
 
-          {!hasLoadedOnce && (
+          {isEngineLoading && (
             <div
               role="status"
               aria-live="polite"
@@ -91,9 +91,10 @@ function App() {
               <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary motion-reduce:animate-none" />
               <p className="text-muted-foreground">
                 <span className="font-medium text-foreground">
-                  Preparing the video engine…
+                  Loading the FFmpeg encoder…
                 </span>{" "}
-                You can add and trim videos while the encoder downloads.
+                The first run downloads it once. The browser encoder needs no
+                download.
               </p>
             </div>
           )}
@@ -158,7 +159,7 @@ function App() {
 
         <footer className="mt-auto border-t">
           <div className="mx-auto w-full max-w-6xl px-4 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] text-center text-xs text-muted-foreground sm:text-sm">
-            <p>Built with React, WebAssembly and care. 100% client-side.</p>
+            <p>Built with React, Canvas and WebAssembly. 100% client-side.</p>
           </div>
         </footer>
       </div>

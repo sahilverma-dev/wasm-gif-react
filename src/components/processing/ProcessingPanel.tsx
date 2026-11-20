@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Film, Grid, Settings } from "lucide-react";
 import { useVideoStore } from "../../store/useVideoStore";
 import { useJobStore } from "../../store/useJobStore";
+import { useSettingsStore } from "../../store/useSettingsStore";
 import { type GifSettings, type ProcessingJob } from "../../types";
 import { clampRange } from "../../lib/video-files";
 import { formatTime } from "../../lib/video-utils";
@@ -46,10 +47,12 @@ export function ProcessingPanel() {
   const videos = useVideoStore((state) => state.videos);
   const activeVideoId = useVideoStore((state) => state.activeVideoId);
   const addJob = useJobStore((state) => state.addJob);
+  const engine = useSettingsStore((state) => state.engine);
+  const setEngine = useSettingsStore((state) => state.setEngine);
 
   const video = videos.find((entry) => entry.id === activeVideoId);
   const [mode, setMode] = useState<Mode>("simple");
-  const [settings, setSettings] = useState<GifSettings>({
+  const [settings, setSettings] = useState<Omit<GifSettings, "engine">>({
     width: 720,
     fps: 15,
     quality: "medium",
@@ -74,7 +77,7 @@ export function ProcessingPanel() {
     videoId: video.id,
     status: "pending",
     progress: 0,
-    settings: { ...settings },
+    settings: { ...settings, engine },
     outputFileName: `${video.file.name.split(".")[0]}_${Date.now()}.gif`,
     resolution: `${outputWidth}px`,
     fps: settings.fps,
@@ -175,6 +178,42 @@ export function ProcessingPanel() {
       <div className="flex items-center gap-2">
         <Settings className="h-5 w-5 shrink-0 text-primary" />
         <h3 className="font-semibold">Output settings</h3>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Encoder</Label>
+        <div
+          className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1"
+          role="group"
+          aria-label="GIF encoder"
+        >
+          {(
+            [
+              { value: "browser", label: "Browser" },
+              { value: "ffmpeg", label: "FFmpeg" },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={engine === option.value}
+              onClick={() => setEngine(option.value)}
+              className={cn(
+                "rounded-lg py-2 text-xs font-medium transition-colors",
+                engine === option.value
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {engine === "browser"
+            ? "Starts instantly, no download. Best for short clips and flat graphics."
+            : "Best for photographic video and long clips. Downloads FFmpeg on first use."}
+        </p>
       </div>
 
       <div className="space-y-6">
@@ -287,6 +326,32 @@ export function ProcessingPanel() {
             }
             className="py-2"
           />
+        </div>
+
+        <div className="space-y-2">
+          <Label>Quality</Label>
+          <div
+            className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1"
+            role="group"
+            aria-label="GIF quality"
+          >
+            {(["low", "medium", "high"] as const).map((quality) => (
+              <button
+                key={quality}
+                type="button"
+                aria-pressed={settings.quality === quality}
+                onClick={() => setSettings({ ...settings, quality })}
+                className={cn(
+                  "rounded-lg py-2 text-xs font-medium capitalize transition-colors",
+                  settings.quality === quality
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {quality}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

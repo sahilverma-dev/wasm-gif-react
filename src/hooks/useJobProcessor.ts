@@ -3,11 +3,15 @@ import { toast } from "sonner";
 import { useJobStore } from "../store/useJobStore";
 import { useVideoStore } from "../store/useVideoStore";
 import { useLogStore } from "../store/useLogStore";
-import { clampRange } from "../lib/video-files";
+import { encodeGifInBrowser } from "../lib/browser-gif";
+import { clampRange, type TimeRange } from "../lib/video-files";
 import { formatBytes } from "../lib/video-utils";
 import type {
+  EncoderEngine,
   GifQuality,
+  ProcessingJob,
   TranscodePayload,
+  VideoFile,
   WorkerMessage,
   WorkerResponse,
 } from "../types";
@@ -49,6 +53,10 @@ const RETRY_LADDER: Array<{
   { width: 360, fps: 10, quality: "low" },
 ];
 
+function resolveEngine(job: ProcessingJob): EncoderEngine {
+  return job.settings.engine ?? "ffmpeg";
+}
+
 function describeFailure(message: string): string {
   if (RUNTIME_CRASH.test(message)) {
     return "The encoder ran out of memory. Try a smaller resolution, a lower frame rate, or a shorter selection.";
@@ -70,17 +78,20 @@ function clampFps(value: number): number {
 export function useJobProcessor() {
   const setIsProcessing = useJobStore((state) => state.setProcessing);
   const [isWorkerLoaded, setIsWorkerLoaded] = useState(false);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isEngineLoading, setIsEngineLoading] = useState(false);
   const [workerError, setWorkerError] = useState<string | null>(null);
 
   const workerRef = useRef<Worker | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const activeJobNeedsRestartRef = useRef(false);
   const restartingRef = useRef(false);
+  const browserAbortRef = useRef<AbortController | null>(null);
+  const browserRunningRef = useRef(false);
   const activeToastId = useRef<string | number | null>(null);
   const lastProgressTime = useRef<number>(0);
   const workerGeneration = useRef(0);
   const [workerRestarts, setWorkerRestarts] = useState(0);
+  const [queueTick, setQueueTick] = useState(0);
 
   const addLog = useLogStore((state) => state.addLog);
 
@@ -104,10 +115,77 @@ export function useJobProcessor() {
     (message: string) => {
       setWorkerError(message);
       setIsWorkerLoaded(false);
+      setIsEngineLoading(false);
       restartingRef.current = false;
       clearActiveToast();
     },
     [clearActiveToast],
+  );
+
+  // Shared failure handling for both engines: retry a lighter attempt and only
+  // restart the FFmpeg worker when the wasm runtime is actually broken.
+  const finishJobWithError = useCallback(
+    (jobId: string, rawMessage: string) => {
+      const { jobs, failJob, retryJob } = useJobStore.getState();
+      const job = jobs.find((entry) => entry.id === jobId);
+      if (!job) return;
+
+      addLog(`Error: ${rawMessage}`, "error");
+
+      const engine = resolveEngine(job);
+      const crashed = engine === "ffmpeg" && RUNTIME_CRASH.test(rawMessage);
+      const needsRestart =
+        engine === "ffmpeg" && activeJobNeedsRestartRef.current;
+      activeJobNeedsRestartRef.current = false;
+      const shouldRestart = crashed || needsRestart;
+      const reason = describeFailure(rawMessage);
+      const attempt = job.attempt || 1;
+      const retrySettings = RETRY_LADDER[attempt - 1];
+
+      activeJobIdRef.current = null;
+      lastProgressTime.current = 0;
+
+      if (retrySettings) {
+        addLog(
+          `Job failed (attempt ${attempt}). Retrying at ${retrySettings.width}px / ${retrySettings.fps}fps.`,
+          "info",
+        );
+        retryJob(job.id, { ...job.settings, ...retrySettings }, reason);
+        if (shouldRestart) {
+          restartingRef.current = true;
+          setIsWorkerLoaded(false);
+          setWorkerRestarts((count) => count + 1);
+        }
+        if (!activeToastId.current) {
+          activeToastId.current = toast.loading(
+            `Retrying... (attempt ${attempt + 1})`,
+          );
+        } else {
+          toast.loading(`Retrying... (attempt ${attempt + 1})`, {
+            id: activeToastId.current,
+          });
+        }
+        return;
+      }
+
+      failJob(job.id, reason);
+      if (shouldRestart) {
+        restartingRef.current = true;
+        setIsWorkerLoaded(false);
+        setWorkerRestarts((count) => count + 1);
+      }
+      if (activeToastId.current) {
+        // Replace the loading toast in place so the error is not dismissed by
+        // the same id in the next line.
+        toast.error(`Failed: ${reason}`, {
+          id: activeToastId.current,
+        });
+        activeToastId.current = null;
+      } else {
+        toast.error(`Failed: ${reason}`);
+      }
+    },
+    [addLog],
   );
 
   const handleWorkerMessage = useCallback(
@@ -117,7 +195,7 @@ export function useJobProcessor() {
       switch (message.type) {
         case "LOADED":
           setIsWorkerLoaded(true);
-          setHasLoadedOnce(true);
+          setIsEngineLoading(false);
           restartingRef.current = false;
           setWorkerError(null);
           addLog("FFmpeg loaded", "info");
@@ -189,7 +267,7 @@ export function useJobProcessor() {
         }
 
         case "ERROR": {
-          const { jobs, failJob, retryJob } = useJobStore.getState();
+          const { jobs } = useJobStore.getState();
           const job = message.jobId
             ? jobs.find((entry) => entry.id === message.jobId)
             : jobs.find((entry) => entry.id === activeJobIdRef.current);
@@ -202,63 +280,12 @@ export function useJobProcessor() {
             return;
           }
 
-          addLog(`Error: ${message.payload}`, "error");
-
-          const crashed = RUNTIME_CRASH.test(message.payload);
-          const needsRestart = activeJobNeedsRestartRef.current;
-          activeJobNeedsRestartRef.current = false;
-          const shouldRestart = crashed || needsRestart;
-          const reason = describeFailure(message.payload);
-          const attempt = job.attempt || 1;
-          const retrySettings = RETRY_LADDER[attempt - 1];
-          if (retrySettings) {
-            addLog(
-              `Job failed (attempt ${attempt}). Retrying at ${retrySettings.width}px / ${retrySettings.fps}fps.`,
-              "info",
-            );
-            retryJob(job.id, retrySettings, reason);
-            activeJobIdRef.current = null;
-            lastProgressTime.current = 0;
-            if (shouldRestart) {
-              restartingRef.current = true;
-              setIsWorkerLoaded(false);
-              setWorkerRestarts((count) => count + 1);
-            }
-            if (!activeToastId.current) {
-              activeToastId.current = toast.loading(
-                `Retrying... (attempt ${attempt + 1})`,
-              );
-            } else {
-              toast.loading(`Retrying... (attempt ${attempt + 1})`, {
-                id: activeToastId.current,
-              });
-            }
-            return;
-          }
-
-          activeJobIdRef.current = null;
-          lastProgressTime.current = 0;
-          failJob(job.id, reason);
-          if (shouldRestart) {
-            restartingRef.current = true;
-            setIsWorkerLoaded(false);
-            setWorkerRestarts((count) => count + 1);
-          }
-          if (activeToastId.current) {
-            // Replace the loading toast in place so the error is not dismissed
-            // by the same id in the next line.
-            toast.error(`Failed: ${reason}`, {
-              id: activeToastId.current,
-            });
-            activeToastId.current = null;
-          } else {
-            toast.error(`Failed: ${reason}`);
-          }
+          finishJobWithError(job.id, message.payload);
           break;
         }
       }
     },
-    [addLog, markWorkerFailed],
+    [addLog, finishJobWithError, markWorkerFailed],
   );
 
   const createWorker = useCallback(() => {
@@ -271,11 +298,22 @@ export function useJobProcessor() {
     activeJobNeedsRestartRef.current = false;
     restartingRef.current = true;
     lastProgressTime.current = 0;
+    setIsEngineLoading(true);
 
-    const worker = new Worker(
-      new URL("../workers/ffmpeg.worker.ts", import.meta.url),
-      { type: "module" },
-    );
+    let worker: Worker;
+    try {
+      worker = new Worker(
+        new URL("../workers/ffmpeg.worker.ts", import.meta.url),
+        { type: "module" },
+      );
+    } catch (error) {
+      markWorkerFailed(
+        error instanceof Error
+          ? error.message
+          : "Failed to start the FFmpeg worker.",
+      );
+      return;
+    }
     workerRef.current = worker;
 
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
@@ -288,29 +326,30 @@ export function useJobProcessor() {
       const detail = event.message || "The video processor failed to start.";
       addLog(`Worker error: ${detail}`, "error");
 
-      // A crash while a job is running is recoverable: retry it on a fresh
-      // worker. A crash with no active job usually means the engine itself
-      // could not start, so show the fatal screen instead.
       const activeId = activeJobIdRef.current;
-      const { jobs, retryJob, failJob } = useJobStore.getState();
+      const { jobs } = useJobStore.getState();
       const job = activeId
         ? jobs.find((entry) => entry.id === activeId)
         : undefined;
 
-      if (job) {
-        const reason = "The encoder crashed while processing this job.";
-        const attempt = job.attempt || 1;
-        const retrySettings = RETRY_LADDER[attempt - 1];
-        activeJobIdRef.current = null;
-        lastProgressTime.current = 0;
-        if (retrySettings) {
-          retryJob(job.id, retrySettings, reason);
-        } else {
-          failJob(job.id, reason);
-        }
-        clearActiveToast();
+      // A crash while an FFmpeg job is running is recoverable: retry it on a
+      // fresh worker. If the active job uses the browser engine, leave it
+      // alone and just discard the idle worker.
+      if (job && resolveEngine(job) === "ffmpeg") {
+        finishJobWithError(job.id, detail);
         setIsWorkerLoaded(false);
         setWorkerRestarts((count) => count + 1);
+        return;
+      }
+
+      if (job) {
+        addLog(
+          "The idle FFmpeg worker crashed; the browser encoder is unaffected.",
+          "error",
+        );
+        workerRef.current = null;
+        setIsWorkerLoaded(false);
+        setIsEngineLoading(false);
         return;
       }
 
@@ -320,8 +359,8 @@ export function useJobProcessor() {
     worker.postMessage({ type: "LOAD" } satisfies WorkerMessage);
   }, [
     addLog,
-    clearActiveToast,
     handleWorkerMessage,
+    finishJobWithError,
     markWorkerFailed,
   ]);
 
@@ -332,24 +371,99 @@ export function useJobProcessor() {
     createWorker();
   }, [workerRestarts, createWorker]);
 
-  // Boot the worker once and tear it down with the app.
+  // Tear down both engines with the app. FFmpeg is not created until an FFmpeg
+  // job actually needs it, so the browser engine never downloads it.
   useEffect(() => {
-    createWorker();
-
     return () => {
       workerGeneration.current += 1;
       workerRef.current?.terminate();
       workerRef.current = null;
-      activeJobIdRef.current = null;
+      browserAbortRef.current?.abort();
       clearActiveToast();
     };
-    // Intentionally mount-only: createWorker only touches refs and stable
-    // callbacks.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [clearActiveToast]);
 
-  // Stale-job watchdog. ffmpeg.wasm can freeze on broken input, and
-  // ffmpeg.exec() has no cancellation, so the only recovery is a fresh worker.
+  const startBrowserJob = useCallback(
+    (job: ProcessingJob, video: VideoFile, trimRange: TimeRange) => {
+      const controller = new AbortController();
+      browserAbortRef.current = controller;
+      browserRunningRef.current = true;
+      activeJobIdRef.current = job.id;
+      activeJobNeedsRestartRef.current = false;
+      lastProgressTime.current = Date.now();
+
+      const { startJob, setProcessing } = useJobStore.getState();
+      startJob(job.id);
+      setProcessing(true);
+
+      if (!activeToastId.current) {
+        activeToastId.current = toast.loading("Processing: 0%");
+      }
+
+      void (async () => {
+        try {
+          const blob = await encodeGifInBrowser({
+            video,
+            trimRange,
+            settings: job.settings,
+            signal: controller.signal,
+            onProgress: (progress) => {
+              lastProgressTime.current = Date.now();
+              const percent = Math.max(
+                0,
+                Math.min(99, Math.round(progress)),
+              );
+              useJobStore.getState().updateJobProgress(job.id, percent);
+              if (activeToastId.current) {
+                toast.loading(`Processing: ${percent}%`, {
+                  id: activeToastId.current,
+                });
+              }
+            },
+          });
+
+          if (controller.signal.aborted) return;
+
+          useJobStore
+            .getState()
+            .completeJob(
+              job.id,
+              URL.createObjectURL(blob),
+              formatBytes(blob.size),
+            );
+          activeJobIdRef.current = null;
+          lastProgressTime.current = 0;
+          addLog(`Job completed: ${job.outputFileName}`, "info");
+
+          if (activeToastId.current) {
+            toast.success("Conversion complete", {
+              id: activeToastId.current,
+            });
+            activeToastId.current = null;
+          } else {
+            toast.success("Conversion complete");
+          }
+        } catch (error) {
+          if (controller.signal.aborted) return;
+          finishJobWithError(
+            job.id,
+            error instanceof Error ? error.message : "Browser encoding failed.",
+          );
+        } finally {
+          browserRunningRef.current = false;
+          browserAbortRef.current = null;
+          if (activeJobIdRef.current === job.id) {
+            activeJobIdRef.current = null;
+          }
+          setQueueTick((count) => count + 1);
+        }
+      })();
+    },
+    [addLog, finishJobWithError],
+  );
+
+  // Stale-job watchdog. FFmpeg has no cancellation and can freeze on broken
+  // input; the browser engine can be aborted directly.
   useEffect(() => {
     const interval = setInterval(() => {
       const jobId = activeJobIdRef.current;
@@ -368,6 +482,17 @@ export function useJobProcessor() {
         `Job "${job.outputFileName}" timed out after ${Math.round(elapsed / 1000)}s without progress.`,
         "error",
       );
+
+      if (resolveEngine(job) === "browser") {
+        browserAbortRef.current?.abort();
+        failJob(job.id, "Timed out: the browser encoder stopped responding.");
+        activeJobIdRef.current = null;
+        lastProgressTime.current = 0;
+        clearActiveToast();
+        setQueueTick((count) => count + 1);
+        toast.error("Job timed out");
+        return;
+      }
 
       failJob(job.id, "Timed out: the encoder stopped responding.");
       activeJobIdRef.current = null;
@@ -391,6 +516,16 @@ export function useJobProcessor() {
       const wasActive = job.status === "processing";
       useJobStore.getState().cancelJob(jobId);
 
+      if (wasActive && resolveEngine(job) === "browser") {
+        browserAbortRef.current?.abort();
+        activeJobIdRef.current = null;
+        lastProgressTime.current = 0;
+        clearActiveToast();
+        toast.info("Job cancelled");
+        setQueueTick((count) => count + 1);
+        return;
+      }
+
       if (wasActive) {
         // ffmpeg.exec() cannot be interrupted, so kill the worker and let the
         // queue restart from a clean instance.
@@ -411,8 +546,6 @@ export function useJobProcessor() {
 
   // Queue runner: starts at most one job at a time.
   useEffect(() => {
-    if (!isWorkerLoaded || restartingRef.current) return;
-
     const { jobs, startJob, failJob, setProcessing } = useJobStore.getState();
 
     if (jobs.some((job) => job.status === "processing")) {
@@ -444,6 +577,19 @@ export function useJobProcessor() {
     if (trimRange.end - trimRange.start < 0.1) {
       failJob(pendingJob.id, "The selected clip is shorter than 0.1s.");
       setProcessing(false);
+      return;
+    }
+
+    if (resolveEngine(pendingJob) === "browser") {
+      if (browserRunningRef.current) return;
+      startBrowserJob(pendingJob, video, trimRange);
+      return;
+    }
+
+    // The FFmpeg engine is created on first use so the browser path never
+    // downloads the 30 MB core.
+    if (!isWorkerLoaded || restartingRef.current) {
+      if (!workerRef.current) createWorker();
       return;
     }
 
@@ -494,9 +640,7 @@ export function useJobProcessor() {
       2,
       Math.round((targetWidth * video.height) / video.width / 2) * 2,
     );
-    const frameCount = Math.ceil(
-      (trimRange.end - trimRange.start) * fps,
-    );
+    const frameCount = Math.ceil((trimRange.end - trimRange.start) * fps);
     // A roughly 4-bytes-per-pixel frame buffer. Single-pass palette encoding
     // keeps every frame until palettegen finishes, so large clips must use the
     // two-pass path to stay inside the wasm heap.
@@ -605,7 +749,15 @@ export function useJobProcessor() {
       type: "TRANSCODE",
       payload,
     } satisfies WorkerMessage);
-  }, [isWorkerLoaded, jobQueueKey, videoIdsKey, addLog]);
+  }, [
+    isWorkerLoaded,
+    jobQueueKey,
+    videoIdsKey,
+    queueTick,
+    addLog,
+    createWorker,
+    startBrowserJob,
+  ]);
 
   // Keep the footprint honest: one processing job means one encoder.
   useEffect(() => {
@@ -614,5 +766,5 @@ export function useJobProcessor() {
     }
   }, [workerError, setIsProcessing]);
 
-  return { workerError, isWorkerLoaded, hasLoadedOnce, handleCancelJob };
+  return { workerError, isEngineLoading, handleCancelJob };
 }

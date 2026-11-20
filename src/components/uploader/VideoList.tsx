@@ -25,6 +25,7 @@ export function VideoList() {
   const addJob = useJobStore((state) => state.addJob);
   const removeJobsForVideo = useJobStore((state) => state.removeJobsForVideo);
   const removeLimits = useSettingsStore((state) => state.removeLimits);
+  const engine = useSettingsStore((state) => state.engine);
   const [isReading, setIsReading] = useState(false);
 
   const jobEntries = jobIndex ? jobIndex.split("|") : [];
@@ -49,6 +50,7 @@ export function VideoList() {
           width: 720,
           fps: 15,
           quality: "medium",
+          engine,
         },
         outputFileName: `${video.file.name.split(".")[0]}_${Date.now()}.gif`,
         resolution: `${Math.min(720, video.width)}px`,

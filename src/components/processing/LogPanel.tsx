@@ -55,7 +55,7 @@ export function LogPanel() {
     <section className="flex min-h-[240px] flex-col overflow-hidden rounded-2xl border bg-card shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 p-2">
         <div className="flex items-center gap-2">
-          <h3 className="pl-1 text-sm font-semibold">FFmpeg logs</h3>
+          <h3 className="pl-1 text-sm font-semibold">Encoder logs</h3>
           <span className="rounded border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
             {filteredLogs.length}
           </span>
@@ -127,7 +127,7 @@ export function LogPanel() {
         ref={scrollRef}
         role="log"
         aria-live="off"
-        aria-label="FFmpeg output"
+        aria-label="Encoder output"
         onScroll={(event) => {
           const element = event.currentTarget;
           shouldStickToBottom.current =

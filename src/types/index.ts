@@ -22,10 +22,13 @@ export interface VideoClip {
 
 export type GifQuality = "low" | "medium" | "high";
 
+export type EncoderEngine = "browser" | "ffmpeg";
+
 export interface GifSettings {
   width: number | "auto"; // 'auto' uses original width
   fps: number;
   quality: GifQuality;
+  engine: EncoderEngine;
 }
 
 export interface ProcessingJob {

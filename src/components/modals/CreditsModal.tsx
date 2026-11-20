@@ -38,6 +38,11 @@ const categories = [
       { name: "React", url: "https://react.dev", desc: "UI Library" },
       { name: "Tailwind CSS", url: "https://tailwindcss.com", desc: "Styling" },
       { name: "shadcn/ui", url: "https://ui.shadcn.com", desc: "Components" },
+      {
+        name: "gifenc",
+        url: "https://github.com/mattdesl/gifenc",
+        desc: "Browser Encoder",
+      },
     ],
   },
   {
